@@ -2,9 +2,9 @@ import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  dialect: "postgresql",
+  dialect: "mysql",
   schema: "./src/db/schema.ts",
-  out: "./drizzle",
+  out: "./drizzle/mysql",
   dbCredentials: {
     // An empty value keeps `db:generate` usable without a running database.
     // `db:migrate` requires DATABASE_URL to be set in backend/.env.
