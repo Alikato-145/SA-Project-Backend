@@ -1,8 +1,10 @@
+// Defines MySQL persistence for employee advance requests.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
   decimal,
+  foreignKey,
   index,
   mysqlEnum,
   mysqlTable,
@@ -33,9 +35,7 @@ export const advanceRequests = mysqlTable(
     status: mysqlEnum("status", advanceStatusValues)
       .notNull()
       .default("pending"),
-    requestedByUserAccountId: foreignId("requested_by_user_account_id")
-      .notNull()
-      .references(() => userAccounts.id, restrict),
+    requestedByUserAccountId: foreignId("requested_by_user_account_id").notNull(),
     requestedAt: instant("requested_at").notNull().defaultNow(),
     decidedByUserAccountId: foreignId("decided_by_user_account_id").references(
       () => userAccounts.id,
@@ -46,6 +46,13 @@ export const advanceRequests = mysqlTable(
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "advance_req_requested_by_fk",
+      columns: [table.requestedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
     uniqueIndex("advance_requests_employee_month_uidx").on(
       table.employeeId,
       table.requestMonth,
@@ -58,4 +65,3 @@ export const advanceRequests = mysqlTable(
     ),
   ],
 );
-

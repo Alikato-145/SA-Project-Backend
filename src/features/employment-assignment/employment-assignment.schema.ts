@@ -1,9 +1,11 @@
+// Defines MySQL persistence for effective-dated employee assignments and pay.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
   decimal,
+  foreignKey,
   index,
   mysqlEnum,
   mysqlTable,
@@ -13,7 +15,6 @@ import {
   foreignId,
   id,
   restrict,
-  setNull,
   timestamps,
 } from "../../db/schema.columns";
 import { employmentTypeValues } from "../../db/schema.enums";
@@ -45,17 +46,21 @@ export const employmentAssignments = mysqlTable(
     baseSalary: decimal("base_salary", { precision: 12, scale: 2 }).notNull(),
     welfareAmount: decimal("welfare_amount", { precision: 12, scale: 2 })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     effectiveFrom: date("effective_from").notNull(),
     effectiveTo: date("effective_to"),
     isPrimary: boolean("is_primary").notNull().default(true),
-    createdByUserAccountId: foreignId("created_by_user_account_id").references(
-      () => userAccounts.id,
-      setNull,
-    ),
+    createdByUserAccountId: foreignId("created_by_user_account_id"),
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "employment_assignment_created_by_fk",
+      columns: [table.createdByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     uniqueIndex("employment_assignments_employee_from_uidx").on(
       table.employeeId,
       table.effectiveFrom,
@@ -79,4 +84,3 @@ export const employmentAssignments = mysqlTable(
     ),
   ],
 );
-

@@ -1,3 +1,4 @@
+// Defines MySQL persistence for top-level shops.
 import { boolean, mysqlTable, varchar } from "drizzle-orm/mysql-core";
 import { id, timestamps } from "../../db/schema.columns";
 

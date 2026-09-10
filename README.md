@@ -34,6 +34,6 @@ bun run db:migrate
 `db:generate` only reads the schema. `db:migrate` connects to MySQL and
 therefore requires a non-empty `DATABASE_URL` in `.env`.
 
-The repository-level `../compose.yaml` should provide a MySQL service on port
-`3306` with the same development credentials as `.env.example`. Data is kept
-in a named Docker volume. Stop the Compose stack with `bun run db:down`.
+The backend-local `docker-compose.yaml` starts MySQL 8.4 on port `3306` with
+the development credentials in `.env.example`. Data is kept in the named
+`mysql_data` Docker volume. Stop the Compose stack with `bun run db:down`.

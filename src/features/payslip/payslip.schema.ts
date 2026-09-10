@@ -1,3 +1,4 @@
+// Defines MySQL persistence for payslips and email delivery attempts.
 import {
   index,
   mysqlEnum,
@@ -66,4 +67,3 @@ export const emailDeliveryLogs = mysqlTable(
     index("email_delivery_logs_status_idx").on(table.status),
   ],
 );
-

@@ -1,3 +1,4 @@
+// Defines MySQL persistence for employee loans and repayment installments.
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -93,4 +94,3 @@ export const loanInstallments = mysqlTable(
     check("chk_installment_amount_positive", sql`${table.amount} > 0`),
   ],
 );
-

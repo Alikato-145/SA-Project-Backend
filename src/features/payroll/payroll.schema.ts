@@ -1,8 +1,10 @@
+// Defines MySQL persistence for payroll configuration, periods, and results.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
   decimal,
+  foreignKey,
   index,
   mysqlEnum,
   mysqlTable,
@@ -48,12 +50,17 @@ export const payrollConfigurations = mysqlTable(
     unit: varchar("unit", { length: 30 }).notNull(),
     effectiveFrom: date("effective_from").notNull(),
     effectiveTo: date("effective_to"),
-    createdByUserAccountId: foreignId("created_by_user_account_id")
-      .notNull()
-      .references(() => userAccounts.id, restrict),
+    createdByUserAccountId: foreignId("created_by_user_account_id").notNull(),
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "payroll_config_created_by_fk",
+      columns: [table.createdByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
     uniqueIndex("payroll_configurations_scope_key_from_uidx").on(
       table.shopId,
       table.branchId,
@@ -128,9 +135,7 @@ export const payrollRecords = mysqlTable(
     employeeId: foreignId("employee_id")
       .notNull()
       .references(() => employees.id, restrict),
-    employmentAssignmentId: foreignId("employment_assignment_id")
-      .notNull()
-      .references(() => employmentAssignments.id, restrict),
+    employmentAssignmentId: foreignId("employment_assignment_id").notNull(),
     status: mysqlEnum("status", payrollRecordStatusValues)
       .notNull()
       .default("draft"),
@@ -143,27 +148,39 @@ export const payrollRecords = mysqlTable(
       scale: 2,
     })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     totalEarnings: decimal("total_earnings", { precision: 12, scale: 2 })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     totalDeductions: decimal("total_deductions", {
       precision: 12,
       scale: 2,
     })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     netPay: decimal("net_pay", { precision: 12, scale: 2 })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     calculatedAt: instant("calculated_at"),
-    calculatedByUserAccountId: foreignId(
-      "calculated_by_user_account_id",
-    ).references(() => userAccounts.id, setNull),
+    calculatedByUserAccountId: foreignId("calculated_by_user_account_id"),
     lockedAt: instant("locked_at"),
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "payroll_record_assignment_fk",
+      columns: [table.employmentAssignmentId],
+      foreignColumns: [employmentAssignments.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "payroll_record_calculated_by_fk",
+      columns: [table.calculatedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     uniqueIndex("payroll_records_period_employee_uidx").on(
       table.payrollPeriodId,
       table.employeeId,
@@ -200,16 +217,20 @@ export const payrollItems = mysqlTable(
     quantity: decimal("quantity", { precision: 10, scale: 2 }),
     rate: decimal("rate", { precision: 14, scale: 4 }),
     amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-    payrollConfigurationId: foreignId("payroll_configuration_id").references(
-      () => payrollConfigurations.id,
-      setNull,
-    ),
+    payrollConfigurationId: foreignId("payroll_configuration_id"),
     sourceTable: varchar("source_table", { length: 80 }),
     sourceId: foreignId("source_id"),
     occurredOn: date("occurred_on"),
     createdAt: instant("created_at").notNull().defaultNow(),
   },
   (table) => [
+    foreignKey({
+      name: "payroll_item_config_fk",
+      columns: [table.payrollConfigurationId],
+      foreignColumns: [payrollConfigurations.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     index("payroll_items_record_direction_idx").on(
       table.payrollRecordId,
       table.direction,
@@ -235,33 +256,51 @@ export const payrollAdjustments = mysqlTable(
   "payroll_adjustments",
   {
     id: id(),
-    originalPayrollRecordId: foreignId("original_payroll_record_id")
-      .notNull()
-      .references(() => payrollRecords.id, restrict),
-    appliedPayrollPeriodId: foreignId("applied_payroll_period_id").references(
-      () => payrollPeriods.id,
-      restrict,
-    ),
+    originalPayrollRecordId: foreignId("original_payroll_record_id").notNull(),
+    appliedPayrollPeriodId: foreignId("applied_payroll_period_id"),
     direction: mysqlEnum("direction", payrollItemDirectionValues).notNull(),
     amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
     reason: text("reason").notNull(),
     status: mysqlEnum("status", payrollAdjustmentStatusValues)
       .notNull()
       .default("pending"),
-    requestedByUserAccountId: foreignId("requested_by_user_account_id")
-      .notNull()
-      .references(() => userAccounts.id, restrict),
+    requestedByUserAccountId: foreignId("requested_by_user_account_id").notNull(),
     requestedAt: instant("requested_at").notNull().defaultNow(),
-    approvedByUserAccountId: foreignId("approved_by_user_account_id").references(
-      () => userAccounts.id,
-      setNull,
-    ),
+    approvedByUserAccountId: foreignId("approved_by_user_account_id"),
     approvedAt: instant("approved_at"),
     appliedPayrollItemId: foreignId("applied_payroll_item_id")
       .unique()
       .references(() => payrollItems.id, setNull),
   },
   (table) => [
+    foreignKey({
+      name: "payroll_adj_original_record_fk",
+      columns: [table.originalPayrollRecordId],
+      foreignColumns: [payrollRecords.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "payroll_adj_applied_period_fk",
+      columns: [table.appliedPayrollPeriodId],
+      foreignColumns: [payrollPeriods.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "payroll_adj_requested_by_fk",
+      columns: [table.requestedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "payroll_adj_approved_by_fk",
+      columns: [table.approvedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     index("payroll_adjustments_original_status_idx").on(
       table.originalPayrollRecordId,
       table.status,

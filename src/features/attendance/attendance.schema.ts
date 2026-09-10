@@ -1,3 +1,4 @@
+// Defines MySQL persistence for daily employee attendance records.
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -69,4 +70,3 @@ export const workDayRecords = mysqlTable(
     ),
   ],
 );
-

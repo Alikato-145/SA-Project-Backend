@@ -1,3 +1,4 @@
+// Defines MySQL persistence for shop-defined public holidays.
 import {
   boolean,
   date,
@@ -38,4 +39,3 @@ export const holidayCalendars = mysqlTable(
     ),
   ],
 );
-

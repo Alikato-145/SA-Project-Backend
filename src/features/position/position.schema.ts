@@ -1,3 +1,4 @@
+// Defines MySQL persistence for shop-level job positions.
 import {
   boolean,
   mysqlTable,
@@ -23,4 +24,3 @@ export const positions = mysqlTable(
     uniqueIndex("positions_shop_code_uidx").on(table.shopId, table.code),
   ],
 );
-

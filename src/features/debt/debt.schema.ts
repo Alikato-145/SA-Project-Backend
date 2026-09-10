@@ -1,15 +1,16 @@
+// Defines MySQL persistence for employee debt types and transactions.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
   decimal,
+  foreignKey,
   index,
   mysqlEnum,
   mysqlTable,
   text,
   varchar,
-  type AnyMySqlColumn,
 } from "drizzle-orm/mysql-core";
 import {
   foreignId,
@@ -17,7 +18,6 @@ import {
   id,
   instant,
   restrict,
-  setNull,
   smallId,
   timestamps,
 } from "../../db/schema.columns";
@@ -54,20 +54,34 @@ export const debtTransactions = mysqlTable(
     transactionDate: date("transaction_date").notNull(),
     description: text("description").notNull(),
     amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-    originalTransactionId: foreignId("original_transaction_id").references(
-      (): AnyMySqlColumn => debtTransactions.id,
-      restrict,
-    ),
-    recordedByUserAccountId: foreignId("recorded_by_user_account_id")
-      .notNull()
-      .references(() => userAccounts.id, restrict),
-    settledInPayrollRecordId: foreignId(
-      "settled_in_payroll_record_id",
-    ).references(() => payrollRecords.id, setNull),
+    originalTransactionId: foreignId("original_transaction_id"),
+    recordedByUserAccountId: foreignId("recorded_by_user_account_id").notNull(),
+    settledInPayrollRecordId: foreignId("settled_in_payroll_record_id"),
     settledAt: instant("settled_at"),
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "debt_tx_original_fk",
+      columns: [table.originalTransactionId],
+      foreignColumns: [table.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "debt_tx_recorded_by_fk",
+      columns: [table.recordedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "debt_tx_settled_payroll_fk",
+      columns: [table.settledInPayrollRecordId],
+      foreignColumns: [payrollRecords.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     index("debt_transactions_employee_date_idx").on(
       table.employeeId,
       table.transactionDate,

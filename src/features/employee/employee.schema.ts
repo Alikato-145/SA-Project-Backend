@@ -1,3 +1,4 @@
+// Defines MySQL persistence for employee identity and employment status.
 import { sql } from "drizzle-orm";
 import {
   check,

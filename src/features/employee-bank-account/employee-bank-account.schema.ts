@@ -1,3 +1,4 @@
+// Defines MySQL persistence for encrypted employee bank accounts.
 import {
   boolean,
   index,
@@ -26,4 +27,3 @@ export const employeeBankAccounts = mysqlTable(
   },
   (table) => [index("employee_bank_accounts_employee_idx").on(table.employeeId)],
 );
-

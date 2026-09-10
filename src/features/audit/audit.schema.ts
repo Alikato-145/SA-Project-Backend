@@ -1,3 +1,4 @@
+// Defines MySQL persistence for the system audit trail.
 import { index, json, mysqlTable, text, varchar } from "drizzle-orm/mysql-core";
 import { foreignId, id, instant, setNull } from "../../db/schema.columns";
 import { userAccounts } from "../user-account/user-account.schema";
@@ -31,4 +32,3 @@ export const auditLogs = mysqlTable(
     ),
   ],
 );
-

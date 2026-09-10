@@ -1,3 +1,4 @@
+// Defines MySQL persistence for effective-dated employee weekly holidays.
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -34,4 +35,3 @@ export const employeeWeeklyHolidays = mysqlTable(
     ),
   ],
 );
-

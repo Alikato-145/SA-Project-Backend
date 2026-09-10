@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+// Provides shared MySQL ID, timestamp, and foreign-key column helpers.
 import { bigint, smallint, timestamp } from "drizzle-orm/mysql-core";
 
 export const id = (name = "id") =>
@@ -19,12 +19,8 @@ export const instant = (name: string) =>
   timestamp(name, { mode: "date", fsp: 3 });
 
 export const timestamps = {
-  createdAt: instant("created_at")
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP(3)`),
-  updatedAt: instant("updated_at")
-    .notNull()
-    .default(sql`CURRENT_TIMESTAMP(3)`),
+  createdAt: instant("created_at").notNull().defaultNow(),
+  updatedAt: instant("updated_at").notNull().defaultNow(),
 };
 
 export const restrict = {

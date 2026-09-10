@@ -1,3 +1,4 @@
+// Defines MySQL persistence for branch departments.
 import {
   boolean,
   index,
@@ -25,4 +26,3 @@ export const departments = mysqlTable(
     index("departments_branch_idx").on(table.branchId),
   ],
 );
-

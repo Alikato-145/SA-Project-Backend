@@ -1,3 +1,4 @@
+// Provides shared enum values used by feature-owned MySQL schemas.
 export const roleScopeValues = ["self", "department", "branch", "all"] as const;
 export const employeeStatusValues = [
   "active",

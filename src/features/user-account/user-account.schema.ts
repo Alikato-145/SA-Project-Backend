@@ -1,6 +1,8 @@
+// Defines MySQL persistence for login accounts and scoped role grants.
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   mysqlEnum,
   mysqlTable,
@@ -15,7 +17,6 @@ import {
   id,
   instant,
   restrict,
-  setNull,
   timestamps,
 } from "../../db/schema.columns";
 import { accountStatusValues } from "../../db/schema.enums";
@@ -67,13 +68,17 @@ export const userAccountRoles = mysqlTable(
       () => departments.id,
       restrict,
     ),
-    grantedByUserAccountId: foreignId("granted_by_user_account_id").references(
-      () => userAccounts.id,
-      setNull,
-    ),
+    grantedByUserAccountId: foreignId("granted_by_user_account_id"),
     grantedAt: instant("granted_at").notNull().defaultNow(),
   },
   (table) => [
+    foreignKey({
+      name: "account_role_granted_by_fk",
+      columns: [table.grantedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     uniqueIndex("user_account_roles_scope_uidx").on(
       table.userAccountId,
       table.roleId,
@@ -84,4 +89,3 @@ export const userAccountRoles = mysqlTable(
     index("user_account_roles_role_idx").on(table.roleId),
   ],
 );
-

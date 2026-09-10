@@ -1,3 +1,4 @@
+// Defines MySQL persistence for employee and leave attachments.
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -16,10 +17,12 @@ export const attachments = mysqlTable(
   "attachments",
   {
     id: id(),
-    employeeId: foreignId("employee_id").references(() => employees.id, restrict),
+    employeeId: foreignId("employee_id").references(() => employees.id, {
+      onDelete: "restrict",
+    }),
     leaveRequestId: foreignId("leave_request_id").references(
       () => leaveRequests.id,
-      restrict,
+      { onDelete: "restrict" },
     ),
     fileName: varchar("file_name", { length: 255 }).notNull(),
     storageKey: text("storage_key").notNull(),
@@ -44,4 +47,3 @@ export const attachments = mysqlTable(
     check("chk_attachment_size_positive", sql`${table.fileSizeBytes} > 0`),
   ],
 );
-

@@ -1,8 +1,10 @@
+// Defines MySQL persistence for branch schedules and date overrides.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
+  foreignKey,
   mysqlTable,
   smallint,
   time,
@@ -13,7 +15,6 @@ import {
   foreignId,
   id,
   restrict,
-  setNull,
   timestamps,
 } from "../../db/schema.columns";
 import { branches } from "../branch/branch.schema";
@@ -63,17 +64,20 @@ export const branchScheduleOverrides = mysqlTable(
     closeTime: time("close_time"),
     isClosed: boolean("is_closed").notNull().default(false),
     reason: varchar("reason", { length: 255 }),
-    createdByUserAccountId: foreignId("created_by_user_account_id").references(
-      () => userAccounts.id,
-      setNull,
-    ),
+    createdByUserAccountId: foreignId("created_by_user_account_id"),
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "branch_sched_override_created_by_fk",
+      columns: [table.createdByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("set null")
+      .onUpdate("cascade"),
     uniqueIndex("branch_schedule_overrides_branch_date_uidx").on(
       table.branchId,
       table.scheduleDate,
     ),
   ],
 );
-

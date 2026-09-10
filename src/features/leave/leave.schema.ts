@@ -1,3 +1,4 @@
+// Defines MySQL persistence for leave types, requests, quotas, and approvals.
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -124,12 +125,12 @@ export const leaveRequestDays = mysqlTable(
     leaveDate: date("leave_date").notNull(),
     dayAmount: decimal("day_amount", { precision: 4, scale: 2 })
       .notNull()
-      .default("1"),
+      .default(sql`1`),
     isPaid: boolean("is_paid").notNull(),
     isDeductible: boolean("is_deductible").notNull(),
     quotaConsumed: decimal("quota_consumed", { precision: 4, scale: 2 })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     ...timestamps,
   },
   (table) => [
@@ -169,7 +170,7 @@ export const leaveQuotas = mysqlTable(
     }).notNull(),
     usedDays: decimal("used_days", { precision: 6, scale: 2 })
       .notNull()
-      .default("0"),
+      .default(sql`0`),
     lastRecalculatedAt: instant("last_recalculated_at"),
     frozenAt: instant("frozen_at"),
     ...timestamps,

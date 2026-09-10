@@ -1,3 +1,4 @@
+// Defines MySQL persistence for restaurant branches.
 import {
   boolean,
   index,
@@ -30,4 +31,3 @@ export const branches = mysqlTable(
     index("branches_shop_idx").on(table.shopId),
   ],
 );
-

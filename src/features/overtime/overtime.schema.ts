@@ -1,8 +1,10 @@
+// Defines MySQL persistence for overtime requests and approval history.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
   decimal,
+  foreignKey,
   index,
   mysqlEnum,
   mysqlTable,
@@ -45,14 +47,19 @@ export const overtimeRecords = mysqlTable(
     status: mysqlEnum("status", overtimeStatusValues)
       .notNull()
       .default("pending"),
-    requestedByUserAccountId: foreignId("requested_by_user_account_id")
-      .notNull()
-      .references(() => userAccounts.id, restrict),
+    requestedByUserAccountId: foreignId("requested_by_user_account_id").notNull(),
     submittedAt: instant("submitted_at").notNull().defaultNow(),
     decidedAt: instant("decided_at"),
     ...timestamps,
   },
   (table) => [
+    foreignKey({
+      name: "ot_record_requested_by_fk",
+      columns: [table.requestedByUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
     uniqueIndex("overtime_records_employee_date_uidx").on(
       table.employeeId,
       table.overtimeDate,
@@ -69,17 +76,27 @@ export const overtimeApprovalActions = mysqlTable(
   "overtime_approval_actions",
   {
     id: id(),
-    overtimeRecordId: foreignId("overtime_record_id")
-      .notNull()
-      .references(() => overtimeRecords.id, restrict),
-    actorUserAccountId: foreignId("actor_user_account_id")
-      .notNull()
-      .references(() => userAccounts.id, restrict),
+    overtimeRecordId: foreignId("overtime_record_id").notNull(),
+    actorUserAccountId: foreignId("actor_user_account_id").notNull(),
     action: mysqlEnum("action", approvalActionTypeValues).notNull(),
     remark: text("remark"),
     actedAt: instant("acted_at").notNull().defaultNow(),
   },
   (table) => [
+    foreignKey({
+      name: "ot_action_record_fk",
+      columns: [table.overtimeRecordId],
+      foreignColumns: [overtimeRecords.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
+    foreignKey({
+      name: "ot_action_actor_fk",
+      columns: [table.actorUserAccountId],
+      foreignColumns: [userAccounts.id],
+    })
+      .onDelete("restrict")
+      .onUpdate("cascade"),
     index("overtime_approval_actions_record_acted_idx").on(
       table.overtimeRecordId,
       table.actedAt,

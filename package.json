@@ -8,8 +8,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:up": "docker compose -f ../compose.yaml up -d --wait mysql",
-    "db:down": "docker compose -f ../compose.yaml down",
+    "db:up": "docker compose -f docker-compose.yaml up -d --wait mysql",
+    "db:down": "docker compose -f docker-compose.yaml down",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
