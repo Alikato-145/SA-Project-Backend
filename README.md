@@ -13,3 +13,27 @@ bun run dev
 ```
 
 Open http://localhost:3000/ with your browser to see the result.
+
+## Database
+
+Create the local environment file and change the connection string to match your
+PostgreSQL instance:
+
+```bash
+cp .env.example .env
+```
+
+Generate and apply Drizzle migrations:
+
+```bash
+bun run db:up
+bun run db:generate
+bun run db:migrate
+```
+
+`db:generate` only reads the schema. `db:migrate` connects to PostgreSQL and
+therefore requires a non-empty `DATABASE_URL` in `.env`.
+
+The repository-level `../compose.yaml` starts PostgreSQL 16 on port `5432` with
+the same development credentials as `.env.example`. Data is kept in a named
+Docker volume. Stop the Compose stack with `bun run db:down`.

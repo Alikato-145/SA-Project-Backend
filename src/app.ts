@@ -3,4 +3,7 @@ import { appConfig } from "./core/config/aqpp.config";
 
 export const app = new Elysia()
   .get("/", () => "Hello Elysia")
-  .listen(appConfig.elysiaPort);
+  .listen({
+    hostname: appConfig.elysiaHost,
+    port: appConfig.elysiaPort,
+  });
