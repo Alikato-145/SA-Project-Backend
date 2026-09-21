@@ -2,24 +2,25 @@
   "name": "backend",
   "version": "1.0.50",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "bun test",
     "dev": "bun run --watch src/index.ts",
     "dev:docker": "nodemon --legacy-watch --watch src --ext ts --exec \"bun run src/index.ts\"",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:up": "docker compose -f docker-compose.yaml up -d --wait mysql",
-    "db:down": "docker compose -f docker-compose.yaml down",
+    "db:up": "docker compose -f ../compose.yaml up -d --wait postgres",
+    "db:down": "docker compose -f ../compose.yaml stop postgres",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "drizzle-orm": "^0.44.5",
     "dotenv": "^17.2.2",
+    "drizzle-orm": "^0.44.5",
     "elysia": "latest",
-    "mysql2": "^3.15.3",
+    "pg": "^8.23.0",
     "zod": "^4.1.5"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "bun-types": "latest",
     "drizzle-kit": "^0.31.4",
     "nodemon": "^3.1.10",

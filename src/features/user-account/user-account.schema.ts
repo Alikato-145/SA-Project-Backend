@@ -1,16 +1,15 @@
-// Defines MySQL persistence for login accounts and scoped role grants.
+// Defines PostgreSQL persistence for login accounts and scoped role grants.
 import { sql } from "drizzle-orm";
 import {
   check,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   smallint,
   text,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   foreignSmallId,
@@ -19,13 +18,13 @@ import {
   restrict,
   timestamps,
 } from "../../db/schema.columns";
-import { accountStatusValues } from "../../db/schema.enums";
+import { accountStatusEnum } from "../../db/schema.enums";
 import { branches } from "../branch/branch.schema";
 import { departments } from "../department/department.schema";
 import { employees } from "../employee/employee.schema";
 import { roles } from "../role/role.schema";
 
-export const userAccounts = mysqlTable(
+export const userAccounts = pgTable(
   "user_accounts",
   {
     id: id(),
@@ -34,7 +33,7 @@ export const userAccounts = mysqlTable(
       .references(() => employees.id, restrict),
     username: varchar("username", { length: 100 }).notNull().unique(),
     passwordHash: text("password_hash").notNull(),
-    status: mysqlEnum("status", accountStatusValues)
+    status: accountStatusEnum("status")
       .notNull()
       .default("active"),
     failedLoginAttempts: smallint("failed_login_attempts").notNull().default(0),
@@ -50,7 +49,7 @@ export const userAccounts = mysqlTable(
   ],
 );
 
-export const userAccountRoles = mysqlTable(
+export const userAccountRoles = pgTable(
   "user_account_roles",
   {
     id: id(),

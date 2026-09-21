@@ -1,8 +1,8 @@
-// Defines MySQL persistence for top-level shops.
-import { boolean, mysqlTable, varchar } from "drizzle-orm/mysql-core";
+// Defines PostgreSQL persistence for top-level shops.
+import { boolean, pgTable, varchar } from "drizzle-orm/pg-core";
 import { id, timestamps } from "../../db/schema.columns";
 
-export const shops = mysqlTable("shops", {
+export const shops = pgTable("shops", {
   id: id(),
   code: varchar("code", { length: 30 }).notNull().unique(),
   name: varchar("name", { length: 150 }).notNull(),

@@ -16,4 +16,4 @@ COPY src ./src
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "bunx drizzle-kit migrate && exec bun run src/index.ts"]
+CMD ["sh", "-c", "bun run db:migrate && exec bun run src/index.ts"]

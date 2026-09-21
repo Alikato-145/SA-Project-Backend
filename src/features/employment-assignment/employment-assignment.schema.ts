@@ -1,4 +1,4 @@
-// Defines MySQL persistence for effective-dated employee assignments and pay.
+// Defines PostgreSQL persistence for effective-dated employee assignments and pay.
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -7,24 +7,23 @@ import {
   decimal,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   uniqueIndex,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
   restrict,
   timestamps,
 } from "../../db/schema.columns";
-import { employmentTypeValues } from "../../db/schema.enums";
+import { employmentTypeEnum } from "../../db/schema.enums";
 import { branches } from "../branch/branch.schema";
 import { departments } from "../department/department.schema";
 import { employees } from "../employee/employee.schema";
 import { positions } from "../position/position.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const employmentAssignments = mysqlTable(
+export const employmentAssignments = pgTable(
   "employment_assignments",
   {
     id: id(),
@@ -40,7 +39,7 @@ export const employmentAssignments = mysqlTable(
     positionId: foreignId("position_id")
       .notNull()
       .references(() => positions.id, restrict),
-    employmentType: mysqlEnum("employment_type", employmentTypeValues)
+    employmentType: employmentTypeEnum("employment_type")
       .notNull()
       .default("full_time"),
     baseSalary: decimal("base_salary", { precision: 12, scale: 2 }).notNull(),

@@ -1,16 +1,15 @@
-// Defines MySQL persistence for employee loans and repayment installments.
+// Defines PostgreSQL persistence for employee loans and repayment installments.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  decimal,
   index,
-  mysqlEnum,
-  mysqlTable,
+  numeric,
+  pgTable,
   smallint,
   text,
   uniqueIndex,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -19,25 +18,25 @@ import {
   setNull,
   timestamps,
 } from "../../db/schema.columns";
-import { installmentStatusValues, loanStatusValues } from "../../db/schema.enums";
+import { installmentStatusEnum, loanStatusEnum } from "../../db/schema.enums";
 import { employees } from "../employee/employee.schema";
 import { payrollRecords } from "../payroll/payroll.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const loans = mysqlTable(
+export const loans = pgTable(
   "loans",
   {
     id: id(),
     employeeId: foreignId("employee_id")
       .notNull()
       .references(() => employees.id, restrict),
-    principalAmount: decimal("principal_amount", {
+    principalAmount: numeric("principal_amount", {
       precision: 12,
       scale: 2,
     }).notNull(),
     reason: text("reason").notNull(),
     installmentCount: smallint("installment_count").notNull(),
-    status: mysqlEnum("status", loanStatusValues).notNull().default("active"),
+    status: loanStatusEnum("status").notNull().default("active"),
     approvedByUserAccountId: foreignId("approved_by_user_account_id")
       .notNull()
       .references(() => userAccounts.id, restrict),
@@ -58,7 +57,7 @@ export const loans = mysqlTable(
   ],
 );
 
-export const loanInstallments = mysqlTable(
+export const loanInstallments = pgTable(
   "loan_installments",
   {
     id: id(),
@@ -67,8 +66,8 @@ export const loanInstallments = mysqlTable(
       .references(() => loans.id, restrict),
     installmentNo: smallint("installment_no").notNull(),
     duePeriodStart: date("due_period_start").notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-    status: mysqlEnum("status", installmentStatusValues)
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    status: installmentStatusEnum("status")
       .notNull()
       .default("scheduled"),
     deductedAt: instant("deducted_at"),

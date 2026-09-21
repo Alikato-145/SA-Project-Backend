@@ -1,11 +1,11 @@
-// Defines MySQL persistence for shop-defined public holidays.
+// Defines PostgreSQL persistence for shop-defined public holidays.
 import {
   boolean,
   date,
-  mysqlTable,
+  pgTable,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -16,7 +16,7 @@ import {
 import { shops } from "../shop/shop.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const holidayCalendars = mysqlTable(
+export const holidayCalendars = pgTable(
   "holiday_calendars",
   {
     id: id(),

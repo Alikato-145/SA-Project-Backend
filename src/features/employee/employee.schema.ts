@@ -1,17 +1,16 @@
-// Defines MySQL persistence for employee identity and employment status.
+// Defines PostgreSQL persistence for employee identity and employment status.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { id, timestamps } from "../../db/schema.columns";
-import { employeeStatusValues } from "../../db/schema.enums";
+import { employeeStatusEnum } from "../../db/schema.enums";
 
-export const employees = mysqlTable(
+export const employees = pgTable(
   "employees",
   {
     id: id(),
@@ -24,7 +23,7 @@ export const employees = mysqlTable(
     personalEmail: varchar("personal_email", { length: 255 }),
     address: text("address"),
     hireDate: date("hire_date").notNull(),
-    status: mysqlEnum("status", employeeStatusValues)
+    status: employeeStatusEnum("status")
       .notNull()
       .default("active"),
     terminatedAt: date("terminated_at"),

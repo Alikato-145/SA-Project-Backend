@@ -1,18 +1,17 @@
-// Defines MySQL persistence for payroll configuration, periods, and results.
+// Defines PostgreSQL persistence for payroll configuration, periods, and results.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  decimal,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  numeric,
+  pgTable,
   smallint,
   text,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -22,11 +21,11 @@ import {
   timestamps,
 } from "../../db/schema.columns";
 import {
-  payrollAdjustmentStatusValues,
-  payrollItemDirectionValues,
-  payrollItemTypeValues,
-  payrollPeriodStatusValues,
-  payrollRecordStatusValues,
+  payrollAdjustmentStatusEnum,
+  payrollItemDirectionEnum,
+  payrollItemTypeEnum,
+  payrollPeriodStatusEnum,
+  payrollRecordStatusEnum,
 } from "../../db/schema.enums";
 import { branches } from "../branch/branch.schema";
 import { employees } from "../employee/employee.schema";
@@ -34,7 +33,7 @@ import { employmentAssignments } from "../employment-assignment/employment-assig
 import { shops } from "../shop/shop.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const payrollConfigurations = mysqlTable(
+export const payrollConfigurations = pgTable(
   "payroll_configurations",
   {
     id: id(),
@@ -43,7 +42,7 @@ export const payrollConfigurations = mysqlTable(
       .references(() => shops.id, restrict),
     branchId: foreignId("branch_id").references(() => branches.id, restrict),
     configKey: varchar("config_key", { length: 50 }).notNull(),
-    numericValue: decimal("numeric_value", {
+    numericValue: numeric("numeric_value", {
       precision: 14,
       scale: 4,
     }).notNull(),
@@ -82,7 +81,7 @@ export const payrollConfigurations = mysqlTable(
   ],
 );
 
-export const payrollPeriods = mysqlTable(
+export const payrollPeriods = pgTable(
   "payroll_periods",
   {
     id: id(),
@@ -93,7 +92,7 @@ export const payrollPeriods = mysqlTable(
     periodMonth: smallint("period_month").notNull(),
     startDate: date("start_date").notNull(),
     endDate: date("end_date").notNull(),
-    status: mysqlEnum("status", payrollPeriodStatusValues)
+    status: payrollPeriodStatusEnum("status")
       .notNull()
       .default("draft"),
     createdByUserAccountId: foreignId("created_by_user_account_id")
@@ -125,7 +124,7 @@ export const payrollPeriods = mysqlTable(
   ],
 );
 
-export const payrollRecords = mysqlTable(
+export const payrollRecords = pgTable(
   "payroll_records",
   {
     id: id(),
@@ -136,29 +135,29 @@ export const payrollRecords = mysqlTable(
       .notNull()
       .references(() => employees.id, restrict),
     employmentAssignmentId: foreignId("employment_assignment_id").notNull(),
-    status: mysqlEnum("status", payrollRecordStatusValues)
+    status: payrollRecordStatusEnum("status")
       .notNull()
       .default("draft"),
-    baseSalarySnapshot: decimal("base_salary_snapshot", {
+    baseSalarySnapshot: numeric("base_salary_snapshot", {
       precision: 12,
       scale: 2,
     }).notNull(),
-    welfareSnapshot: decimal("welfare_snapshot", {
+    welfareSnapshot: numeric("welfare_snapshot", {
       precision: 12,
       scale: 2,
     })
       .notNull()
       .default(sql`0`),
-    totalEarnings: decimal("total_earnings", { precision: 12, scale: 2 })
+    totalEarnings: numeric("total_earnings", { precision: 12, scale: 2 })
       .notNull()
       .default(sql`0`),
-    totalDeductions: decimal("total_deductions", {
+    totalDeductions: numeric("total_deductions", {
       precision: 12,
       scale: 2,
     })
       .notNull()
       .default(sql`0`),
-    netPay: decimal("net_pay", { precision: 12, scale: 2 })
+    netPay: numeric("net_pay", { precision: 12, scale: 2 })
       .notNull()
       .default(sql`0`),
     calculatedAt: instant("calculated_at"),
@@ -204,19 +203,19 @@ export const payrollRecords = mysqlTable(
 export type PayrollRecord = typeof payrollRecords.$inferSelect;
 export type NewPayrollRecord = typeof payrollRecords.$inferInsert;
 
-export const payrollItems = mysqlTable(
+export const payrollItems = pgTable(
   "payroll_items",
   {
     id: id(),
     payrollRecordId: foreignId("payroll_record_id")
       .notNull()
       .references(() => payrollRecords.id, restrict),
-    itemType: mysqlEnum("item_type", payrollItemTypeValues).notNull(),
-    direction: mysqlEnum("direction", payrollItemDirectionValues).notNull(),
+    itemType: payrollItemTypeEnum("item_type").notNull(),
+    direction: payrollItemDirectionEnum("direction").notNull(),
     description: varchar("description", { length: 255 }).notNull(),
-    quantity: decimal("quantity", { precision: 10, scale: 2 }),
-    rate: decimal("rate", { precision: 14, scale: 4 }),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    quantity: numeric("quantity", { precision: 10, scale: 2 }),
+    rate: numeric("rate", { precision: 14, scale: 4 }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     payrollConfigurationId: foreignId("payroll_configuration_id"),
     sourceTable: varchar("source_table", { length: 80 }),
     sourceId: foreignId("source_id"),
@@ -252,16 +251,16 @@ export const payrollItems = mysqlTable(
   ],
 );
 
-export const payrollAdjustments = mysqlTable(
+export const payrollAdjustments = pgTable(
   "payroll_adjustments",
   {
     id: id(),
     originalPayrollRecordId: foreignId("original_payroll_record_id").notNull(),
     appliedPayrollPeriodId: foreignId("applied_payroll_period_id"),
-    direction: mysqlEnum("direction", payrollItemDirectionValues).notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    direction: payrollItemDirectionEnum("direction").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     reason: text("reason").notNull(),
-    status: mysqlEnum("status", payrollAdjustmentStatusValues)
+    status: payrollAdjustmentStatusEnum("status")
       .notNull()
       .default("pending"),
     requestedByUserAccountId: foreignId("requested_by_user_account_id").notNull(),

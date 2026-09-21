@@ -1,19 +1,19 @@
-// Defines MySQL persistence for employee and leave attachments.
+// Defines PostgreSQL persistence for employee and leave attachments.
 import { sql } from "drizzle-orm";
 import {
   bigint,
   check,
   index,
-  mysqlTable,
+  pgTable,
   varchar,
   text,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { foreignId, id, instant, restrict } from "../../db/schema.columns";
 import { employees } from "../employee/employee.schema";
 import { leaveRequests } from "../leave/leave.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const attachments = mysqlTable(
+export const attachments = pgTable(
   "attachments",
   {
     id: id(),
@@ -27,10 +27,7 @@ export const attachments = mysqlTable(
     fileName: varchar("file_name", { length: 255 }).notNull(),
     storageKey: text("storage_key").notNull(),
     mimeType: varchar("mime_type", { length: 100 }).notNull(),
-    fileSizeBytes: bigint("file_size_bytes", {
-      mode: "number",
-      unsigned: true,
-    }).notNull(),
+    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }).notNull(),
     fileSha256: varchar("file_sha256", { length: 64 }).notNull(),
     uploadedByUserAccountId: foreignId("uploaded_by_user_account_id")
       .notNull()

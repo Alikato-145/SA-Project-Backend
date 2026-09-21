@@ -1,16 +1,16 @@
-// Defines MySQL persistence for effective-dated employee weekly holidays.
+// Defines PostgreSQL persistence for effective-dated employee weekly holidays.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  mysqlTable,
+  pgTable,
   smallint,
   uniqueIndex,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { foreignId, id, restrict, timestamps } from "../../db/schema.columns";
 import { employees } from "../employee/employee.schema";
 
-export const employeeWeeklyHolidays = mysqlTable(
+export const employeeWeeklyHolidays = pgTable(
   "employee_weekly_holidays",
   {
     id: id(),

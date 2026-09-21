@@ -1,12 +1,12 @@
-// Defines MySQL persistence for access-control roles and their scopes.
-import { boolean, mysqlEnum, mysqlTable, varchar } from "drizzle-orm/mysql-core";
+// Defines PostgreSQL persistence for access-control roles and their scopes.
+import { boolean, pgTable, varchar } from "drizzle-orm/pg-core";
 import { smallId } from "../../db/schema.columns";
-import { roleScopeValues } from "../../db/schema.enums";
+import { roleScopeEnum } from "../../db/schema.enums";
 
-export const roles = mysqlTable("roles", {
+export const roles = pgTable("roles", {
   id: smallId(),
   code: varchar("code", { length: 30 }).notNull().unique(),
   name: varchar("name", { length: 100 }).notNull(),
-  scope: mysqlEnum("scope", roleScopeValues).notNull(),
+  scope: roleScopeEnum("scope").notNull(),
   isActive: boolean("is_active").notNull().default(true),
 });

@@ -1,18 +1,17 @@
-// Defines MySQL persistence for leave types, requests, quotas, and approvals.
+// Defines PostgreSQL persistence for leave types, requests, quotas, and approvals.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
-  decimal,
+  numeric,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   smallint,
   text,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   foreignSmallId,
@@ -23,22 +22,22 @@ import {
   timestamps,
 } from "../../db/schema.columns";
 import {
-  approvalActionTypeValues,
-  leaveRequestStatusValues,
-  quotaTypeValues,
+  approvalActionTypeEnum,
+  leaveRequestStatusEnum,
+  quotaTypeEnum,
 } from "../../db/schema.enums";
 import { workDayRecords } from "../attendance/attendance.schema";
 import { employees } from "../employee/employee.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const leaveTypes = mysqlTable(
+export const leaveTypes = pgTable(
   "leave_types",
   {
     id: smallId(),
     code: varchar("code", { length: 30 }).notNull().unique(),
     nameTh: varchar("name_th", { length: 100 }).notNull(),
-    quotaType: mysqlEnum("quota_type", quotaTypeValues).notNull(),
-    quotaDays: decimal("quota_days", { precision: 6, scale: 2 }),
+    quotaType: quotaTypeEnum("quota_type").notNull(),
+    quotaDays: numeric("quota_days", { precision: 8, scale: 2 }),
     isDeductible: boolean("is_deductible").notNull(),
     requiresDocument: boolean("requires_document").notNull().default(false),
     allowExceed: boolean("allow_exceed").notNull().default(false),
@@ -53,7 +52,7 @@ export const leaveTypes = mysqlTable(
   ],
 );
 
-export const leaveRequests = mysqlTable(
+export const leaveRequests = pgTable(
   "leave_requests",
   {
     id: id(),
@@ -69,12 +68,12 @@ export const leaveRequests = mysqlTable(
     ),
     startDate: date("start_date").notNull(),
     endDate: date("end_date").notNull(),
-    requestedDays: decimal("requested_days", {
-      precision: 6,
+    requestedDays: numeric("requested_days", {
+      precision: 8,
       scale: 2,
     }).notNull(),
     reason: text("reason"),
-    status: mysqlEnum("status", leaveRequestStatusValues)
+    status: leaveRequestStatusEnum("status")
       .notNull()
       .default("pending"),
     isRetroactive: boolean("is_retroactive").notNull().default(false),
@@ -103,7 +102,7 @@ export const leaveRequests = mysqlTable(
   ],
 );
 
-export const leaveRequestDays = mysqlTable(
+export const leaveRequestDays = pgTable(
   "leave_request_days",
   {
     id: id(),
@@ -123,12 +122,12 @@ export const leaveRequestDays = mysqlTable(
       .notNull()
       .references(() => leaveTypes.id, restrict),
     leaveDate: date("leave_date").notNull(),
-    dayAmount: decimal("day_amount", { precision: 4, scale: 2 })
+    dayAmount: numeric("day_amount", { precision: 8, scale: 2 })
       .notNull()
       .default(sql`1`),
     isPaid: boolean("is_paid").notNull(),
     isDeductible: boolean("is_deductible").notNull(),
-    quotaConsumed: decimal("quota_consumed", { precision: 4, scale: 2 })
+    quotaConsumed: numeric("quota_consumed", { precision: 8, scale: 2 })
       .notNull()
       .default(sql`0`),
     ...timestamps,
@@ -153,7 +152,7 @@ export const leaveRequestDays = mysqlTable(
   ],
 );
 
-export const leaveQuotas = mysqlTable(
+export const leaveQuotas = pgTable(
   "leave_quotas",
   {
     id: id(),
@@ -163,12 +162,12 @@ export const leaveQuotas = mysqlTable(
     leaveTypeId: foreignSmallId("leave_type_id")
       .notNull()
       .references(() => leaveTypes.id, restrict),
-    quotaYear: smallint("quota_year", { unsigned: true }).notNull(),
-    entitledDays: decimal("entitled_days", {
-      precision: 6,
+    quotaYear: smallint("quota_year").notNull(),
+    entitledDays: numeric("entitled_days", {
+      precision: 8,
       scale: 2,
     }).notNull(),
-    usedDays: decimal("used_days", { precision: 6, scale: 2 })
+    usedDays: numeric("used_days", { precision: 8, scale: 2 })
       .notNull()
       .default(sql`0`),
     lastRecalculatedAt: instant("last_recalculated_at"),
@@ -189,7 +188,7 @@ export const leaveQuotas = mysqlTable(
   ],
 );
 
-export const leaveApprovalActions = mysqlTable(
+export const leaveApprovalActions = pgTable(
   "leave_approval_actions",
   {
     id: id(),
@@ -199,7 +198,7 @@ export const leaveApprovalActions = mysqlTable(
     actorUserAccountId: foreignId("actor_user_account_id")
       .notNull()
       .references(() => userAccounts.id, restrict),
-    action: mysqlEnum("action", approvalActionTypeValues).notNull(),
+    action: approvalActionTypeEnum("action").notNull(),
     fromLeaveTypeId: foreignSmallId("from_leave_type_id").references(
       () => leaveTypes.id,
       restrict,

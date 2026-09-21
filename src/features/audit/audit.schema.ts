@@ -1,9 +1,9 @@
-// Defines MySQL persistence for the system audit trail.
-import { index, json, mysqlTable, text, varchar } from "drizzle-orm/mysql-core";
+// Defines PostgreSQL persistence for the system audit trail.
+import { index, jsonb, pgTable, text, varchar } from "drizzle-orm/pg-core";
 import { foreignId, id, instant, setNull } from "../../db/schema.columns";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const auditLogs = mysqlTable(
+export const auditLogs = pgTable(
   "audit_logs",
   {
     id: id(),
@@ -14,8 +14,8 @@ export const auditLogs = mysqlTable(
     action: varchar("action", { length: 80 }).notNull(),
     tableName: varchar("table_name", { length: 100 }).notNull(),
     recordId: varchar("record_id", { length: 100 }).notNull(),
-    oldData: json("old_data").$type<Record<string, unknown>>(),
-    newData: json("new_data").$type<Record<string, unknown>>(),
+    oldData: jsonb("old_data").$type<Record<string, unknown>>(),
+    newData: jsonb("new_data").$type<Record<string, unknown>>(),
     reason: text("reason"),
     occurredAt: instant("occurred_at").notNull().defaultNow(),
     requestId: varchar("request_id", { length: 100 }),

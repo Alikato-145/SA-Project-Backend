@@ -1,5 +1,5 @@
 {
-  "id": "b34a0b17-015f-4bb6-bcf7-bbd49297b7c3",
+  "id": "0547fd1f-613c-4240-8ad0-b1d338ae9c1e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -149,19 +149,6 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "advance_requests_requested_by_user_account_id_user_accounts_id_fk": {
-          "name": "advance_requests_requested_by_user_account_id_user_accounts_id_fk",
-          "tableFrom": "advance_requests",
-          "tableTo": "user_accounts",
-          "columnsFrom": [
-            "requested_by_user_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
         "advance_requests_decided_by_user_account_id_user_accounts_id_fk": {
           "name": "advance_requests_decided_by_user_account_id_user_accounts_id_fk",
           "tableFrom": "advance_requests",
@@ -173,6 +160,19 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "cascade"
+        },
+        "advance_req_requested_by_fk": {
+          "name": "advance_req_requested_by_fk",
+          "tableFrom": "advance_requests",
+          "tableTo": "user_accounts",
+          "columnsFrom": [
+            "requested_by_user_account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "cascade"
         }
       },
@@ -312,7 +312,7 @@
             "id"
           ],
           "onDelete": "restrict",
-          "onUpdate": "cascade"
+          "onUpdate": "no action"
         },
         "attachments_leave_request_id_leave_requests_id_fk": {
           "name": "attachments_leave_request_id_leave_requests_id_fk",
@@ -325,7 +325,7 @@
             "id"
           ],
           "onDelete": "restrict",
-          "onUpdate": "cascade"
+          "onUpdate": "no action"
         },
         "attachments_uploaded_by_user_account_id_user_accounts_id_fk": {
           "name": "attachments_uploaded_by_user_account_id_user_accounts_id_fk",
@@ -352,6 +352,228 @@
         "chk_attachment_size_positive": {
           "name": "chk_attachment_size_positive",
           "value": "\"attachments\".\"file_size_bytes\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.work_day_records": {
+      "name": "work_day_records",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "work_day_records_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "branch_id": {
+          "name": "branch_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "work_date": {
+          "name": "work_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "clock_in_at": {
+          "name": "clock_in_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "clock_out_at": {
+          "name": "clock_out_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "work_day_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "late_minutes": {
+          "name": "late_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_deductible": {
+          "name": "is_deductible",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "entry_source": {
+          "name": "entry_source",
+          "type": "time_entry_source",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "created_by_user_account_id": {
+          "name": "created_by_user_account_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "work_day_records_employee_date_uidx": {
+          "name": "work_day_records_employee_date_uidx",
+          "columns": [
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "work_day_records_branch_date_idx": {
+          "name": "work_day_records_branch_date_idx",
+          "columns": [
+            {
+              "expression": "branch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "work_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "work_day_records_status_idx": {
+          "name": "work_day_records_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "work_day_records_employee_id_employees_id_fk": {
+          "name": "work_day_records_employee_id_employees_id_fk",
+          "tableFrom": "work_day_records",
+          "tableTo": "employees",
+          "columnsFrom": [
+            "employee_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "work_day_records_branch_id_branches_id_fk": {
+          "name": "work_day_records_branch_id_branches_id_fk",
+          "tableFrom": "work_day_records",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "branch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        },
+        "work_day_records_created_by_user_account_id_user_accounts_id_fk": {
+          "name": "work_day_records_created_by_user_account_id_user_accounts_id_fk",
+          "tableFrom": "work_day_records",
+          "tableTo": "user_accounts",
+          "columnsFrom": [
+            "created_by_user_account_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_clock_order": {
+          "name": "chk_clock_order",
+          "value": "\"work_day_records\".\"clock_out_at\" is null or \"work_day_records\".\"clock_in_at\" is null or \"work_day_records\".\"clock_out_at\" >= \"work_day_records\".\"clock_in_at\""
+        },
+        "chk_late_minutes_nonnegative": {
+          "name": "chk_late_minutes_nonnegative",
+          "value": "\"work_day_records\".\"late_minutes\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -504,6 +726,139 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.branches": {
+      "name": "branches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "branches_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "shop_id": {
+          "name": "shop_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(150)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Asia/Bangkok'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "branches_shop_code_uidx": {
+          "name": "branches_shop_code_uidx",
+          "columns": [
+            {
+              "expression": "shop_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "branches_shop_idx": {
+          "name": "branches_shop_idx",
+          "columns": [
+            {
+              "expression": "shop_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "branches_shop_id_shops_id_fk": {
+          "name": "branches_shop_id_shops_id_fk",
+          "tableFrom": "branches",
+          "tableTo": "shops",
+          "columnsFrom": [
+            "shop_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.branch_schedule_overrides": {
       "name": "branch_schedule_overrides",
       "schema": "",
@@ -620,8 +975,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "branch_schedule_overrides_created_by_user_account_id_user_accounts_id_fk": {
-          "name": "branch_schedule_overrides_created_by_user_account_id_user_accounts_id_fk",
+        "branch_sched_override_created_by_fk": {
+          "name": "branch_sched_override_created_by_fk",
           "tableFrom": "branch_schedule_overrides",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -767,139 +1122,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.branches": {
-      "name": "branches",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "branches_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "shop_id": {
-          "name": "shop_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "varchar(30)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(150)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "address": {
-          "name": "address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "timezone": {
-          "name": "timezone",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'Asia/Bangkok'"
-        },
-        "is_active": {
-          "name": "is_active",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "branches_shop_code_uidx": {
-          "name": "branches_shop_code_uidx",
-          "columns": [
-            {
-              "expression": "shop_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "code",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "branches_shop_idx": {
-          "name": "branches_shop_idx",
-          "columns": [
-            {
-              "expression": "shop_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "branches_shop_id_shops_id_fk": {
-          "name": "branches_shop_id_shops_id_fk",
-          "tableFrom": "branches",
-          "tableTo": "shops",
-          "columnsFrom": [
-            "shop_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.debt_transactions": {
       "name": "debt_transactions",
       "schema": "",
@@ -929,7 +1151,7 @@
         },
         "debt_type_id": {
           "name": "debt_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -1084,8 +1306,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "debt_transactions_original_transaction_id_debt_transactions_id_fk": {
-          "name": "debt_transactions_original_transaction_id_debt_transactions_id_fk",
+        "debt_tx_original_fk": {
+          "name": "debt_tx_original_fk",
           "tableFrom": "debt_transactions",
           "tableTo": "debt_transactions",
           "columnsFrom": [
@@ -1097,8 +1319,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "debt_transactions_recorded_by_user_account_id_user_accounts_id_fk": {
-          "name": "debt_transactions_recorded_by_user_account_id_user_accounts_id_fk",
+        "debt_tx_recorded_by_fk": {
+          "name": "debt_tx_recorded_by_fk",
           "tableFrom": "debt_transactions",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -1110,8 +1332,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "debt_transactions_settled_in_payroll_record_id_payroll_records_id_fk": {
-          "name": "debt_transactions_settled_in_payroll_record_id_payroll_records_id_fk",
+        "debt_tx_settled_payroll_fk": {
+          "name": "debt_tx_settled_payroll_fk",
           "tableFrom": "debt_transactions",
           "tableTo": "payroll_records",
           "columnsFrom": [
@@ -1141,7 +1363,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": true,
           "notNull": true,
           "identity": {
@@ -1151,7 +1373,7 @@
             "increment": "1",
             "startWith": "1",
             "minValue": "1",
-            "maxValue": "32767",
+            "maxValue": "9223372036854775807",
             "cache": "1",
             "cycle": false
           }
@@ -1332,8 +1554,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.email_delivery_logs": {
-      "name": "email_delivery_logs",
+    "public.employees": {
+      "name": "employees",
       "schema": "",
       "columns": {
         "id": {
@@ -1343,7 +1565,7 @@
           "notNull": true,
           "identity": {
             "type": "byDefault",
-            "name": "email_delivery_logs_id_seq",
+            "name": "employees_id_seq",
             "schema": "public",
             "increment": "1",
             "startWith": "1",
@@ -1353,109 +1575,126 @@
             "cycle": false
           }
         },
-        "payslip_id": {
-          "name": "payslip_id",
-          "type": "bigint",
+        "employee_code": {
+          "name": "employee_code",
+          "type": "varchar(30)",
           "primaryKey": false,
           "notNull": true
         },
-        "recipient_email": {
-          "name": "recipient_email",
+        "national_id": {
+          "name": "national_id",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "passport_id": {
+          "name": "passport_id",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "first_name": {
+          "name": "first_name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_name": {
+          "name": "last_name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "phone": {
+          "name": "phone",
+          "type": "varchar(30)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "personal_email": {
+          "name": "personal_email",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hire_date": {
+          "name": "hire_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": true
         },
         "status": {
           "name": "status",
-          "type": "email_delivery_status",
+          "type": "employee_status",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": true,
-          "default": "'pending'"
+          "default": "'active'"
         },
-        "provider_message_id": {
-          "name": "provider_message_id",
-          "type": "varchar(255)",
+        "terminated_at": {
+          "name": "terminated_at",
+          "type": "date",
           "primaryKey": false,
           "notNull": false
         },
-        "attempted_at": {
-          "name": "attempted_at",
+        "created_at": {
+          "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
         },
-        "sent_at": {
-          "name": "sent_at",
+        "updated_at": {
+          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
-          "notNull": false
-        },
-        "error_message": {
-          "name": "error_message",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "now()"
         }
       },
-      "indexes": {
-        "email_delivery_logs_payslip_attempted_idx": {
-          "name": "email_delivery_logs_payslip_attempted_idx",
-          "columns": [
-            {
-              "expression": "payslip_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "attempted_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "email_delivery_logs_status_idx": {
-          "name": "email_delivery_logs_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "email_delivery_logs_payslip_id_payslips_id_fk": {
-          "name": "email_delivery_logs_payslip_id_payslips_id_fk",
-          "tableFrom": "email_delivery_logs",
-          "tableTo": "payslips",
-          "columnsFrom": [
-            "payslip_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        }
-      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "employees_employee_code_unique": {
+          "name": "employees_employee_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "employee_code"
+          ]
+        },
+        "employees_national_id_unique": {
+          "name": "employees_national_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "national_id"
+          ]
+        },
+        "employees_passport_id_unique": {
+          "name": "employees_passport_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "passport_id"
+          ]
+        }
+      },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_employee_identity": {
+          "name": "chk_employee_identity",
+          "value": "\"employees\".\"national_id\" is not null or \"employees\".\"passport_id\" is not null"
+        },
+        "chk_employee_dates": {
+          "name": "chk_employee_dates",
+          "value": "\"employees\".\"terminated_at\" is null or \"employees\".\"terminated_at\" >= \"employees\".\"hire_date\""
+        }
+      },
       "isRLSEnabled": false
     },
     "public.employee_bank_accounts": {
@@ -1556,22 +1795,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "employee_bank_accounts_active_primary_uidx": {
-          "name": "employee_bank_accounts_active_primary_uidx",
-          "columns": [
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"employee_bank_accounts\".\"is_active\" and \"employee_bank_accounts\".\"is_primary\"",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1717,149 +1940,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.employees": {
-      "name": "employees",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "employees_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "employee_code": {
-          "name": "employee_code",
-          "type": "varchar(30)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "national_id": {
-          "name": "national_id",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "passport_id": {
-          "name": "passport_id",
-          "type": "varchar(30)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_name": {
-          "name": "first_name",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_name": {
-          "name": "last_name",
-          "type": "varchar(100)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "phone": {
-          "name": "phone",
-          "type": "varchar(30)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "personal_email": {
-          "name": "personal_email",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "address": {
-          "name": "address",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hire_date": {
-          "name": "hire_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "employee_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'active'"
-        },
-        "terminated_at": {
-          "name": "terminated_at",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "employees_employee_code_unique": {
-          "name": "employees_employee_code_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "employee_code"
-          ]
-        },
-        "employees_national_id_unique": {
-          "name": "employees_national_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "national_id"
-          ]
-        },
-        "employees_passport_id_unique": {
-          "name": "employees_passport_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "passport_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "chk_employee_identity": {
-          "name": "chk_employee_identity",
-          "value": "\"employees\".\"national_id\" is not null or \"employees\".\"passport_id\" is not null"
-        },
-        "chk_employee_dates": {
-          "name": "chk_employee_dates",
-          "value": "\"employees\".\"terminated_at\" is null or \"employees\".\"terminated_at\" >= \"employees\".\"hire_date\""
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.employment_assignments": {
       "name": "employment_assignments",
       "schema": "",
@@ -1924,7 +2004,7 @@
           "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "effective_from": {
           "name": "effective_from",
@@ -2078,8 +2158,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "employment_assignments_created_by_user_account_id_user_accounts_id_fk": {
-          "name": "employment_assignments_created_by_user_account_id_user_accounts_id_fk",
+        "employment_assignment_created_by_fk": {
+          "name": "employment_assignment_created_by_fk",
           "tableFrom": "employment_assignments",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -2277,13 +2357,13 @@
         },
         "from_leave_type_id": {
           "name": "from_leave_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
         "to_leave_type_id": {
           "name": "to_leave_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -2428,7 +2508,7 @@
         },
         "leave_type_id": {
           "name": "leave_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -2440,16 +2520,16 @@
         },
         "entitled_days": {
           "name": "entitled_days",
-          "type": "numeric(6, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": true
         },
         "used_days": {
           "name": "used_days",
-          "type": "numeric(6, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "last_recalculated_at": {
           "name": "last_recalculated_at",
@@ -2585,7 +2665,7 @@
         },
         "leave_type_id": {
           "name": "leave_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -2597,10 +2677,10 @@
         },
         "day_amount": {
           "name": "day_amount",
-          "type": "numeric(4, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'1'"
+          "default": "1"
         },
         "is_paid": {
           "name": "is_paid",
@@ -2616,10 +2696,10 @@
         },
         "quota_consumed": {
           "name": "quota_consumed",
-          "type": "numeric(4, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "created_at": {
           "name": "created_at",
@@ -2773,13 +2853,13 @@
         },
         "original_leave_type_id": {
           "name": "original_leave_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
         "final_leave_type_id": {
           "name": "final_leave_type_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
         },
@@ -2797,7 +2877,7 @@
         },
         "requested_days": {
           "name": "requested_days",
-          "type": "numeric(6, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": true
         },
@@ -2975,7 +3055,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": true,
           "notNull": true,
           "identity": {
@@ -2985,7 +3065,7 @@
             "increment": "1",
             "startWith": "1",
             "minValue": "1",
-            "maxValue": "32767",
+            "maxValue": "9223372036854775807",
             "cache": "1",
             "cycle": false
           }
@@ -3011,7 +3091,7 @@
         },
         "quota_days": {
           "name": "quota_days",
-          "type": "numeric(6, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -3475,8 +3555,8 @@
         }
       },
       "foreignKeys": {
-        "overtime_approval_actions_overtime_record_id_overtime_records_id_fk": {
-          "name": "overtime_approval_actions_overtime_record_id_overtime_records_id_fk",
+        "ot_action_record_fk": {
+          "name": "ot_action_record_fk",
           "tableFrom": "overtime_approval_actions",
           "tableTo": "overtime_records",
           "columnsFrom": [
@@ -3488,8 +3568,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "overtime_approval_actions_actor_user_account_id_user_accounts_id_fk": {
-          "name": "overtime_approval_actions_actor_user_account_id_user_accounts_id_fk",
+        "ot_action_actor_fk": {
+          "name": "ot_action_actor_fk",
           "tableFrom": "overtime_approval_actions",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -3556,13 +3636,13 @@
         },
         "hours": {
           "name": "hours",
-          "type": "numeric(6, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": false
         },
         "day_units": {
           "name": "day_units",
-          "type": "numeric(4, 2)",
+          "type": "numeric(8, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -3679,8 +3759,8 @@
           "onDelete": "set null",
           "onUpdate": "cascade"
         },
-        "overtime_records_requested_by_user_account_id_user_accounts_id_fk": {
-          "name": "overtime_records_requested_by_user_account_id_user_accounts_id_fk",
+        "ot_record_requested_by_fk": {
+          "name": "ot_record_requested_by_fk",
           "tableFrom": "overtime_records",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -3699,7 +3779,7 @@
       "checkConstraints": {
         "chk_overtime_value_by_type": {
           "name": "chk_overtime_value_by_type",
-          "value": "(\"overtime_records\".\"overtime_type\" = 'hourly' and \"overtime_records\".\"hours\" > 0 and \"overtime_records\".\"day_units\" is null) or (\"overtime_records\".\"overtime_type\" in ('rest_day','public_holiday') and \"overtime_records\".\"day_units\" > 0 and \"overtime_records\".\"day_units\" <= 1 and \"overtime_records\".\"hours\" is null)"
+          "value": "(\"overtime_records\".\"overtime_type\" = 'hourly' and \"overtime_records\".\"hours\" > 0 and \"overtime_records\".\"day_units\" is null) or (\"overtime_records\".\"overtime_type\" in ('rest_day', 'public_holiday') and \"overtime_records\".\"day_units\" > 0 and \"overtime_records\".\"day_units\" <= 1 and \"overtime_records\".\"hours\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -3820,8 +3900,21 @@
         }
       },
       "foreignKeys": {
-        "payroll_adjustments_original_payroll_record_id_payroll_records_id_fk": {
-          "name": "payroll_adjustments_original_payroll_record_id_payroll_records_id_fk",
+        "payroll_adjustments_applied_payroll_item_id_payroll_items_id_fk": {
+          "name": "payroll_adjustments_applied_payroll_item_id_payroll_items_id_fk",
+          "tableFrom": "payroll_adjustments",
+          "tableTo": "payroll_items",
+          "columnsFrom": [
+            "applied_payroll_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        },
+        "payroll_adj_original_record_fk": {
+          "name": "payroll_adj_original_record_fk",
           "tableFrom": "payroll_adjustments",
           "tableTo": "payroll_records",
           "columnsFrom": [
@@ -3833,8 +3926,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_adjustments_applied_payroll_period_id_payroll_periods_id_fk": {
-          "name": "payroll_adjustments_applied_payroll_period_id_payroll_periods_id_fk",
+        "payroll_adj_applied_period_fk": {
+          "name": "payroll_adj_applied_period_fk",
           "tableFrom": "payroll_adjustments",
           "tableTo": "payroll_periods",
           "columnsFrom": [
@@ -3846,8 +3939,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_adjustments_requested_by_user_account_id_user_accounts_id_fk": {
-          "name": "payroll_adjustments_requested_by_user_account_id_user_accounts_id_fk",
+        "payroll_adj_requested_by_fk": {
+          "name": "payroll_adj_requested_by_fk",
           "tableFrom": "payroll_adjustments",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -3859,25 +3952,12 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_adjustments_approved_by_user_account_id_user_accounts_id_fk": {
-          "name": "payroll_adjustments_approved_by_user_account_id_user_accounts_id_fk",
+        "payroll_adj_approved_by_fk": {
+          "name": "payroll_adj_approved_by_fk",
           "tableFrom": "payroll_adjustments",
           "tableTo": "user_accounts",
           "columnsFrom": [
             "approved_by_user_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "cascade"
-        },
-        "payroll_adjustments_applied_payroll_item_id_payroll_items_id_fk": {
-          "name": "payroll_adjustments_applied_payroll_item_id_payroll_items_id_fk",
-          "tableFrom": "payroll_adjustments",
-          "tableTo": "payroll_items",
-          "columnsFrom": [
-            "applied_payroll_item_id"
           ],
           "columnsTo": [
             "id"
@@ -4072,8 +4152,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_configurations_created_by_user_account_id_user_accounts_id_fk": {
-          "name": "payroll_configurations_created_by_user_account_id_user_accounts_id_fk",
+        "payroll_config_created_by_fk": {
+          "name": "payroll_config_created_by_fk",
           "tableFrom": "payroll_configurations",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -4256,8 +4336,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_items_payroll_configuration_id_payroll_configurations_id_fk": {
-          "name": "payroll_items_payroll_configuration_id_payroll_configurations_id_fk",
+        "payroll_item_config_fk": {
+          "name": "payroll_item_config_fk",
           "tableFrom": "payroll_items",
           "tableTo": "payroll_configurations",
           "columnsFrom": [
@@ -4549,28 +4629,28 @@
           "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "total_earnings": {
           "name": "total_earnings",
           "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "total_deductions": {
           "name": "total_deductions",
           "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "net_pay": {
           "name": "net_pay",
           "type": "numeric(12, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'0'"
+          "default": "0"
         },
         "calculated_at": {
           "name": "calculated_at",
@@ -4670,8 +4750,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_records_employment_assignment_id_employment_assignments_id_fk": {
-          "name": "payroll_records_employment_assignment_id_employment_assignments_id_fk",
+        "payroll_record_assignment_fk": {
+          "name": "payroll_record_assignment_fk",
           "tableFrom": "payroll_records",
           "tableTo": "employment_assignments",
           "columnsFrom": [
@@ -4683,8 +4763,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "payroll_records_calculated_by_user_account_id_user_accounts_id_fk": {
-          "name": "payroll_records_calculated_by_user_account_id_user_accounts_id_fk",
+        "payroll_record_calculated_by_fk": {
+          "name": "payroll_record_calculated_by_fk",
           "tableFrom": "payroll_records",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -4726,6 +4806,132 @@
           "value": "\"payroll_records\".\"net_pay\" = \"payroll_records\".\"total_earnings\" - \"payroll_records\".\"total_deductions\""
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.email_delivery_logs": {
+      "name": "email_delivery_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "byDefault",
+            "name": "email_delivery_logs_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "payslip_id": {
+          "name": "payslip_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient_email": {
+          "name": "recipient_email",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "email_delivery_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "provider_message_id": {
+          "name": "provider_message_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempted_at": {
+          "name": "attempted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "email_delivery_logs_payslip_attempted_idx": {
+          "name": "email_delivery_logs_payslip_attempted_idx",
+          "columns": [
+            {
+              "expression": "payslip_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "attempted_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "email_delivery_logs_status_idx": {
+          "name": "email_delivery_logs_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "email_delivery_logs_payslip_id_payslips_id_fk": {
+          "name": "email_delivery_logs_payslip_id_payslips_id_fk",
+          "tableFrom": "email_delivery_logs",
+          "tableTo": "payslips",
+          "columnsFrom": [
+            "payslip_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.payslips": {
@@ -4968,7 +5174,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": true,
           "notNull": true,
           "identity": {
@@ -4978,7 +5184,7 @@
             "increment": "1",
             "startWith": "1",
             "minValue": "1",
-            "maxValue": "32767",
+            "maxValue": "9223372036854775807",
             "cache": "1",
             "cycle": false
           }
@@ -5126,7 +5332,7 @@
         },
         "role_id": {
           "name": "role_id",
-          "type": "smallint",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
@@ -5274,8 +5480,8 @@
           "onDelete": "restrict",
           "onUpdate": "cascade"
         },
-        "user_account_roles_granted_by_user_account_id_user_accounts_id_fk": {
-          "name": "user_account_roles_granted_by_user_account_id_user_accounts_id_fk",
+        "account_role_granted_by_fk": {
+          "name": "account_role_granted_by_fk",
           "tableFrom": "user_account_roles",
           "tableTo": "user_accounts",
           "columnsFrom": [
@@ -5413,228 +5619,6 @@
         "chk_login_attempts_nonnegative": {
           "name": "chk_login_attempts_nonnegative",
           "value": "\"user_accounts\".\"failed_login_attempts\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.work_day_records": {
-      "name": "work_day_records",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigint",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "work_day_records_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "branch_id": {
-          "name": "branch_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "work_date": {
-          "name": "work_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "clock_in_at": {
-          "name": "clock_in_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "clock_out_at": {
-          "name": "clock_out_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "work_day_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "late_minutes": {
-          "name": "late_minutes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "is_deductible": {
-          "name": "is_deductible",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "entry_source": {
-          "name": "entry_source",
-          "type": "time_entry_source",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'manual'"
-        },
-        "created_by_user_account_id": {
-          "name": "created_by_user_account_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "work_day_records_employee_date_uidx": {
-          "name": "work_day_records_employee_date_uidx",
-          "columns": [
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "work_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "work_day_records_branch_date_idx": {
-          "name": "work_day_records_branch_date_idx",
-          "columns": [
-            {
-              "expression": "branch_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "work_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "work_day_records_status_idx": {
-          "name": "work_day_records_status_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "work_day_records_employee_id_employees_id_fk": {
-          "name": "work_day_records_employee_id_employees_id_fk",
-          "tableFrom": "work_day_records",
-          "tableTo": "employees",
-          "columnsFrom": [
-            "employee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "work_day_records_branch_id_branches_id_fk": {
-          "name": "work_day_records_branch_id_branches_id_fk",
-          "tableFrom": "work_day_records",
-          "tableTo": "branches",
-          "columnsFrom": [
-            "branch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "cascade"
-        },
-        "work_day_records_created_by_user_account_id_user_accounts_id_fk": {
-          "name": "work_day_records_created_by_user_account_id_user_accounts_id_fk",
-          "tableFrom": "work_day_records",
-          "tableTo": "user_accounts",
-          "columnsFrom": [
-            "created_by_user_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chk_clock_order": {
-          "name": "chk_clock_order",
-          "value": "\"work_day_records\".\"clock_out_at\" is null or \"work_day_records\".\"clock_in_at\" is null or \"work_day_records\".\"clock_out_at\" >= \"work_day_records\".\"clock_in_at\""
-        },
-        "chk_late_minutes_nonnegative": {
-          "name": "chk_late_minutes_nonnegative",
-          "value": "\"work_day_records\".\"late_minutes\" >= 0"
         }
       },
       "isRLSEnabled": false

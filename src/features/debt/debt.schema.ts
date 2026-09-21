@@ -1,17 +1,16 @@
-// Defines MySQL persistence for employee debt types and transactions.
+// Defines PostgreSQL persistence for employee debt types and transactions.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
-  decimal,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  numeric,
+  pgTable,
   text,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   foreignSmallId,
@@ -21,12 +20,12 @@ import {
   smallId,
   timestamps,
 } from "../../db/schema.columns";
-import { debtTransactionKindValues } from "../../db/schema.enums";
+import { debtTransactionKindEnum } from "../../db/schema.enums";
 import { employees } from "../employee/employee.schema";
 import { payrollRecords } from "../payroll/payroll.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const debtTypes = mysqlTable("debt_types", {
+export const debtTypes = pgTable("debt_types", {
   id: smallId(),
   code: varchar("code", { length: 30 }).notNull().unique(),
   nameTh: varchar("name_th", { length: 100 }).notNull(),
@@ -35,7 +34,7 @@ export const debtTypes = mysqlTable("debt_types", {
   ...timestamps,
 });
 
-export const debtTransactions = mysqlTable(
+export const debtTransactions = pgTable(
   "debt_transactions",
   {
     id: id(),
@@ -45,15 +44,12 @@ export const debtTransactions = mysqlTable(
     debtTypeId: foreignSmallId("debt_type_id")
       .notNull()
       .references(() => debtTypes.id, restrict),
-    transactionKind: mysqlEnum(
-      "transaction_kind",
-      debtTransactionKindValues,
-    )
+    transactionKind: debtTransactionKindEnum("transaction_kind")
       .notNull()
       .default("charge"),
     transactionDate: date("transaction_date").notNull(),
     description: text("description").notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
     originalTransactionId: foreignId("original_transaction_id"),
     recordedByUserAccountId: foreignId("recorded_by_user_account_id").notNull(),
     settledInPayrollRecordId: foreignId("settled_in_payroll_record_id"),

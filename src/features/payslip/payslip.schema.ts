@@ -1,11 +1,10 @@
-// Defines MySQL persistence for payslips and email delivery attempts.
+// Defines PostgreSQL persistence for payslips and email delivery attempts.
 import {
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -14,13 +13,13 @@ import {
   setNull,
 } from "../../db/schema.columns";
 import {
-  emailDeliveryStatusValues,
-  payslipStatusValues,
+  emailDeliveryStatusEnum,
+  payslipStatusEnum,
 } from "../../db/schema.enums";
 import { payrollRecords } from "../payroll/payroll.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const payslips = mysqlTable("payslips", {
+export const payslips = pgTable("payslips", {
   id: id(),
   payrollRecordId: foreignId("payroll_record_id")
     .notNull()
@@ -28,7 +27,7 @@ export const payslips = mysqlTable("payslips", {
     .references(() => payrollRecords.id, restrict),
   fileStorageKey: text("file_storage_key").notNull(),
   fileSha256: varchar("file_sha256", { length: 64 }).notNull(),
-  status: mysqlEnum("status", payslipStatusValues)
+  status: payslipStatusEnum("status")
     .notNull()
     .default("generated"),
   generatedAt: instant("generated_at").notNull().defaultNow(),
@@ -43,7 +42,7 @@ export const payslips = mysqlTable("payslips", {
   ),
 });
 
-export const emailDeliveryLogs = mysqlTable(
+export const emailDeliveryLogs = pgTable(
   "email_delivery_logs",
   {
     id: id(),
@@ -51,7 +50,7 @@ export const emailDeliveryLogs = mysqlTable(
       .notNull()
       .references(() => payslips.id, restrict),
     recipientEmail: varchar("recipient_email", { length: 255 }).notNull(),
-    status: mysqlEnum("status", emailDeliveryStatusValues)
+    status: emailDeliveryStatusEnum("status")
       .notNull()
       .default("pending"),
     providerMessageId: varchar("provider_message_id", { length: 255 }),

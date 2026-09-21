@@ -1,15 +1,15 @@
-// Defines MySQL persistence for encrypted employee bank accounts.
+// Defines PostgreSQL persistence for encrypted employee bank accounts.
 import {
   boolean,
   index,
-  mysqlTable,
+  pgTable,
   text,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { foreignId, id, restrict, timestamps } from "../../db/schema.columns";
 import { employees } from "../employee/employee.schema";
 
-export const employeeBankAccounts = mysqlTable(
+export const employeeBankAccounts = pgTable(
   "employee_bank_accounts",
   {
     id: id(),

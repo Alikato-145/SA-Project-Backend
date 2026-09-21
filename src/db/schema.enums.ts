@@ -1,105 +1,48 @@
-// Provides shared enum values used by feature-owned MySQL schemas.
+// Named PostgreSQL enum types shared by feature-owned schemas.
+import { pgEnum } from "drizzle-orm/pg-core";
+
 export const roleScopeValues = ["self", "department", "branch", "all"] as const;
-export const employeeStatusValues = [
-  "active",
-  "inactive",
-  "suspended",
-  "terminated",
-] as const;
+export const employeeStatusValues = ["active", "inactive", "suspended", "terminated"] as const;
 export const accountStatusValues = ["active", "locked", "disabled"] as const;
-export const employmentTypeValues = [
-  "full_time",
-  "part_time",
-  "temporary",
-] as const;
-export const workDayStatusValues = [
-  "present",
-  "late",
-  "absent",
-  "leave",
-  "weekly_holiday",
-  "public_holiday",
-] as const;
+export const employmentTypeValues = ["full_time", "part_time", "temporary"] as const;
+export const workDayStatusValues = ["present", "late", "absent", "leave", "weekly_holiday", "public_holiday"] as const;
 export const timeEntrySourceValues = ["manual", "import", "biometric"] as const;
 export const quotaTypeValues = ["fixed", "by_seniority", "none"] as const;
-export const leaveRequestStatusValues = [
-  "draft",
-  "pending",
-  "approved",
-  "rejected",
-  "cancelled",
-] as const;
-export const approvalActionTypeValues = [
-  "submitted",
-  "forwarded",
-  "approved",
-  "rejected",
-  "overridden",
-  "type_changed",
-  "cancelled",
-] as const;
-export const overtimeTypeValues = [
-  "rest_day",
-  "hourly",
-  "public_holiday",
-] as const;
-export const overtimeStatusValues = [
-  "pending",
-  "approved",
-  "rejected",
-  "cancelled",
-] as const;
-export const advanceStatusValues = [
-  "pending",
-  "approved",
-  "rejected",
-  "deducted",
-  "cancelled",
-] as const;
+export const leaveRequestStatusValues = ["draft", "pending", "approved", "rejected", "cancelled"] as const;
+export const approvalActionTypeValues = ["submitted", "forwarded", "approved", "rejected", "overridden", "type_changed", "cancelled"] as const;
+export const overtimeTypeValues = ["rest_day", "hourly", "public_holiday"] as const;
+export const overtimeStatusValues = ["pending", "approved", "rejected", "cancelled"] as const;
+export const advanceStatusValues = ["pending", "approved", "rejected", "deducted", "cancelled"] as const;
 export const loanStatusValues = ["active", "closed", "cancelled"] as const;
-export const installmentStatusValues = [
-  "scheduled",
-  "deducted",
-  "waived",
-  "cancelled",
-] as const;
-export const debtTransactionKindValues = [
-  "charge",
-  "adjustment",
-  "reversal",
-] as const;
-export const payrollPeriodStatusValues = [
-  "draft",
-  "previewed",
-  "locked",
-] as const;
-export const payrollRecordStatusValues = [
-  "draft",
-  "calculated",
-  "locked",
-] as const;
+export const installmentStatusValues = ["scheduled", "deducted", "waived", "cancelled"] as const;
+export const debtTransactionKindValues = ["charge", "adjustment", "reversal"] as const;
+export const payrollPeriodStatusValues = ["draft", "previewed", "locked"] as const;
+export const payrollRecordStatusValues = ["draft", "calculated", "locked"] as const;
 export const payrollItemDirectionValues = ["earning", "deduction"] as const;
-export const payrollItemTypeValues = [
-  "base_salary",
-  "welfare",
-  "overtime_rest_day",
-  "overtime_hourly",
-  "overtime_public_holiday",
-  "absence",
-  "lateness",
-  "sick_unpaid",
-  "social_security",
-  "advance",
-  "loan_installment",
-  "debt",
-  "adjustment",
-  "other",
-] as const;
-export const payrollAdjustmentStatusValues = [
-  "pending",
-  "approved",
-  "rejected",
-  "applied",
-] as const;
+export const payrollItemTypeValues = ["base_salary", "welfare", "overtime_rest_day", "overtime_hourly", "overtime_public_holiday", "absence", "lateness", "sick_unpaid", "social_security", "advance", "loan_installment", "debt", "adjustment", "other"] as const;
+export const payrollAdjustmentStatusValues = ["pending", "approved", "rejected", "applied"] as const;
 export const payslipStatusValues = ["generated", "voided"] as const;
 export const emailDeliveryStatusValues = ["pending", "sent", "failed"] as const;
+
+export const roleScopeEnum = pgEnum("role_scope", roleScopeValues);
+export const employeeStatusEnum = pgEnum("employee_status", employeeStatusValues);
+export const accountStatusEnum = pgEnum("account_status", accountStatusValues);
+export const employmentTypeEnum = pgEnum("employment_type", employmentTypeValues);
+export const workDayStatusEnum = pgEnum("work_day_status", workDayStatusValues);
+export const timeEntrySourceEnum = pgEnum("time_entry_source", timeEntrySourceValues);
+export const quotaTypeEnum = pgEnum("quota_type", quotaTypeValues);
+export const leaveRequestStatusEnum = pgEnum("leave_request_status", leaveRequestStatusValues);
+export const approvalActionTypeEnum = pgEnum("approval_action_type", approvalActionTypeValues);
+export const overtimeTypeEnum = pgEnum("overtime_type", overtimeTypeValues);
+export const overtimeStatusEnum = pgEnum("overtime_status", overtimeStatusValues);
+export const advanceStatusEnum = pgEnum("advance_status", advanceStatusValues);
+export const loanStatusEnum = pgEnum("loan_status", loanStatusValues);
+export const installmentStatusEnum = pgEnum("installment_status", installmentStatusValues);
+export const debtTransactionKindEnum = pgEnum("debt_transaction_kind", debtTransactionKindValues);
+export const payrollPeriodStatusEnum = pgEnum("payroll_period_status", payrollPeriodStatusValues);
+export const payrollRecordStatusEnum = pgEnum("payroll_record_status", payrollRecordStatusValues);
+export const payrollItemDirectionEnum = pgEnum("payroll_item_direction", payrollItemDirectionValues);
+export const payrollItemTypeEnum = pgEnum("payroll_item_type", payrollItemTypeValues);
+export const payrollAdjustmentStatusEnum = pgEnum("payroll_adjustment_status", payrollAdjustmentStatusValues);
+export const payslipStatusEnum = pgEnum("payslip_status", payslipStatusValues);
+export const emailDeliveryStatusEnum = pgEnum("email_delivery_status", emailDeliveryStatusValues);

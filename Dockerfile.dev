@@ -7,4 +7,4 @@ RUN bun install --frozen-lockfile
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "bun install --frozen-lockfile && bunx drizzle-kit migrate && exec bun run dev:docker"]
+CMD ["sh", "-c", "bun install --frozen-lockfile && bun run db:migrate && exec bun run dev:docker"]

@@ -1,16 +1,15 @@
-// Defines MySQL persistence for employee advance requests.
+// Defines PostgreSQL persistence for employee advance requests.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  decimal,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  numeric,
+  pgTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -19,11 +18,11 @@ import {
   setNull,
   timestamps,
 } from "../../db/schema.columns";
-import { advanceStatusValues } from "../../db/schema.enums";
+import { advanceStatusEnum } from "../../db/schema.enums";
 import { employees } from "../employee/employee.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const advanceRequests = mysqlTable(
+export const advanceRequests = pgTable(
   "advance_requests",
   {
     id: id(),
@@ -31,8 +30,8 @@ export const advanceRequests = mysqlTable(
       .notNull()
       .references(() => employees.id, restrict),
     requestMonth: date("request_month").notNull(),
-    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
-    status: mysqlEnum("status", advanceStatusValues)
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    status: advanceStatusEnum("status")
       .notNull()
       .default("pending"),
     requestedByUserAccountId: foreignId("requested_by_user_account_id").notNull(),
@@ -61,7 +60,7 @@ export const advanceRequests = mysqlTable(
     check("chk_advance_amount_positive", sql`${table.amount} > 0`),
     check(
       "chk_advance_request_month",
-      sql`dayofmonth(${table.requestMonth}) = 1`,
+      sql`extract(day from ${table.requestMonth}) = 1`,
     ),
   ],
 );

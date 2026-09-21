@@ -1,22 +1,19 @@
-// Provides shared MySQL ID, timestamp, and foreign-key column helpers.
-import { bigint, smallint, timestamp } from "drizzle-orm/mysql-core";
+// Shared PostgreSQL column helpers for feature-owned schemas.
+import { bigint, timestamp } from "drizzle-orm/pg-core";
 
 export const id = (name = "id") =>
-  bigint(name, { mode: "number", unsigned: true })
-    .autoincrement()
-    .primaryKey();
-
-export const smallId = (name = "id") =>
-  smallint(name, { unsigned: true }).autoincrement().primaryKey();
+  bigint(name, { mode: "number" }).generatedByDefaultAsIdentity().primaryKey();
 
 export const foreignId = (name: string) =>
-  bigint(name, { mode: "number", unsigned: true });
+  bigint(name, { mode: "number" });
 
-export const foreignSmallId = (name: string) =>
-  smallint(name, { unsigned: true });
+// Transitional aliases keep feature schemas import-compatible while they move
+// from MySQL small IDs to the canonical PostgreSQL bigint IDs.
+export const smallId = id;
+export const foreignSmallId = foreignId;
 
 export const instant = (name: string) =>
-  timestamp(name, { mode: "date", fsp: 3 });
+  timestamp(name, { withTimezone: true, mode: "date" });
 
 export const timestamps = {
   createdAt: instant("created_at").notNull().defaultNow(),

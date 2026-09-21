@@ -1,4 +1,5 @@
 // Drizzle Kit entry point. Table ownership stays inside each feature.
+export * from "./schema.enums";
 export * from "../features/advance/advance.schema";
 export * from "../features/attachment/attachment.schema";
 export * from "../features/attendance/attendance.schema";
@@ -21,3 +22,4 @@ export * from "../features/position/position.schema";
 export * from "../features/role/role.schema";
 export * from "../features/shop/shop.schema";
 export * from "../features/user-account/user-account.schema";
+export * from "./schema.relations";

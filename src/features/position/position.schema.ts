@@ -1,14 +1,14 @@
-// Defines MySQL persistence for shop-level job positions.
+// Defines PostgreSQL persistence for shop-level job positions.
 import {
   boolean,
-  mysqlTable,
+  pgTable,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { foreignId, id, restrict, timestamps } from "../../db/schema.columns";
 import { shops } from "../shop/shop.schema";
 
-export const positions = mysqlTable(
+export const positions = pgTable(
   "positions",
   {
     id: id(),

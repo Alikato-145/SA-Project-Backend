@@ -1,16 +1,16 @@
-// Defines MySQL persistence for branch schedules and date overrides.
+// Defines PostgreSQL persistence for branch schedules and date overrides.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
   foreignKey,
-  mysqlTable,
+  pgTable,
   smallint,
   time,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -20,7 +20,7 @@ import {
 import { branches } from "../branch/branch.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const branchSchedules = mysqlTable(
+export const branchSchedules = pgTable(
   "branch_schedules",
   {
     id: id(),
@@ -52,7 +52,7 @@ export const branchSchedules = mysqlTable(
   ],
 );
 
-export const branchScheduleOverrides = mysqlTable(
+export const branchScheduleOverrides = pgTable(
   "branch_schedule_overrides",
   {
     id: id(),

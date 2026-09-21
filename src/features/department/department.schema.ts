@@ -1,15 +1,15 @@
-// Defines MySQL persistence for branch departments.
+// Defines PostgreSQL persistence for branch departments.
 import {
   boolean,
   index,
-  mysqlTable,
+  pgTable,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { foreignId, id, restrict, timestamps } from "../../db/schema.columns";
 import { branches } from "../branch/branch.schema";
 
-export const departments = mysqlTable(
+export const departments = pgTable(
   "departments",
   {
     id: id(),

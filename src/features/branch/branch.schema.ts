@@ -1,16 +1,16 @@
-// Defines MySQL persistence for restaurant branches.
+// Defines PostgreSQL persistence for restaurant branches.
 import {
   boolean,
   index,
-  mysqlTable,
+  pgTable,
   text,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import { foreignId, id, restrict, timestamps } from "../../db/schema.columns";
 import { shops } from "../shop/shop.schema";
 
-export const branches = mysqlTable(
+export const branches = pgTable(
   "branches",
   {
     id: id(),

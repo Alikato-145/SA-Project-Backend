@@ -1,16 +1,15 @@
-// Defines MySQL persistence for overtime requests and approval history.
+// Defines PostgreSQL persistence for overtime requests and approval history.
 import { sql } from "drizzle-orm";
 import {
   check,
   date,
-  decimal,
+  numeric,
   foreignKey,
   index,
-  mysqlEnum,
-  mysqlTable,
+  pgTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -20,15 +19,15 @@ import {
   timestamps,
 } from "../../db/schema.columns";
 import {
-  approvalActionTypeValues,
-  overtimeStatusValues,
-  overtimeTypeValues,
+  approvalActionTypeEnum,
+  overtimeStatusEnum,
+  overtimeTypeEnum,
 } from "../../db/schema.enums";
 import { workDayRecords } from "../attendance/attendance.schema";
 import { employees } from "../employee/employee.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const overtimeRecords = mysqlTable(
+export const overtimeRecords = pgTable(
   "overtime_records",
   {
     id: id(),
@@ -40,11 +39,11 @@ export const overtimeRecords = mysqlTable(
       setNull,
     ),
     overtimeDate: date("overtime_date").notNull(),
-    overtimeType: mysqlEnum("overtime_type", overtimeTypeValues).notNull(),
-    hours: decimal("hours", { precision: 6, scale: 2 }),
-    dayUnits: decimal("day_units", { precision: 4, scale: 2 }),
+    overtimeType: overtimeTypeEnum("overtime_type").notNull(),
+    hours: numeric("hours", { precision: 8, scale: 2 }),
+    dayUnits: numeric("day_units", { precision: 8, scale: 2 }),
     reason: text("reason"),
-    status: mysqlEnum("status", overtimeStatusValues)
+    status: overtimeStatusEnum("status")
       .notNull()
       .default("pending"),
     requestedByUserAccountId: foreignId("requested_by_user_account_id").notNull(),
@@ -72,13 +71,13 @@ export const overtimeRecords = mysqlTable(
   ],
 );
 
-export const overtimeApprovalActions = mysqlTable(
+export const overtimeApprovalActions = pgTable(
   "overtime_approval_actions",
   {
     id: id(),
     overtimeRecordId: foreignId("overtime_record_id").notNull(),
     actorUserAccountId: foreignId("actor_user_account_id").notNull(),
-    action: mysqlEnum("action", approvalActionTypeValues).notNull(),
+    action: approvalActionTypeEnum("action").notNull(),
     remark: text("remark"),
     actedAt: instant("acted_at").notNull().defaultNow(),
   },

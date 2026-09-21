@@ -16,8 +16,8 @@ Open http://localhost:3000/ with your browser to see the result.
 
 ## Database
 
-Create the local environment file and change the connection string to match your
-MySQL instance:
+Create the local environment file and change the connection string to match the
+root PostgreSQL service:
 
 ```bash
 cp .env.example .env
@@ -31,9 +31,9 @@ bun run db:generate
 bun run db:migrate
 ```
 
-`db:generate` only reads the schema. `db:migrate` connects to MySQL and
+`db:generate` only reads the schema. `db:migrate` connects to PostgreSQL and
 therefore requires a non-empty `DATABASE_URL` in `.env`.
 
-The backend-local `docker-compose.yaml` starts MySQL 8.4 on port `3306` with
-the development credentials in `.env.example`. Data is kept in the named
-`mysql_data` Docker volume. Stop the Compose stack with `bun run db:down`.
+`bun run db:up` starts the root Compose PostgreSQL service and reads the root
+`.env` file. Stop only that database service with `bun run db:down`; neither
+command reads, converts, resets, or deletes legacy MySQL data.

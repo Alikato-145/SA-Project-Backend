@@ -1,16 +1,15 @@
-// Defines MySQL persistence for daily employee attendance records.
+// Defines PostgreSQL persistence for daily employee attendance records.
 import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
   date,
   index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  pgTable,
   text,
   uniqueIndex,
-} from "drizzle-orm/mysql-core";
+} from "drizzle-orm/pg-core";
 import {
   foreignId,
   id,
@@ -20,14 +19,14 @@ import {
   timestamps,
 } from "../../db/schema.columns";
 import {
-  timeEntrySourceValues,
-  workDayStatusValues,
+  timeEntrySourceEnum,
+  workDayStatusEnum,
 } from "../../db/schema.enums";
 import { branches } from "../branch/branch.schema";
 import { employees } from "../employee/employee.schema";
 import { userAccounts } from "../user-account/user-account.schema";
 
-export const workDayRecords = mysqlTable(
+export const workDayRecords = pgTable(
   "work_day_records",
   {
     id: id(),
@@ -40,10 +39,10 @@ export const workDayRecords = mysqlTable(
     workDate: date("work_date").notNull(),
     clockInAt: instant("clock_in_at"),
     clockOutAt: instant("clock_out_at"),
-    status: mysqlEnum("status", workDayStatusValues).notNull(),
-    lateMinutes: int("late_minutes").notNull().default(0),
+    status: workDayStatusEnum("status").notNull(),
+    lateMinutes: integer("late_minutes").notNull().default(0),
     isDeductible: boolean("is_deductible").notNull().default(false),
-    entrySource: mysqlEnum("entry_source", timeEntrySourceValues)
+    entrySource: timeEntrySourceEnum("entry_source")
       .notNull()
       .default("manual"),
     createdByUserAccountId: foreignId("created_by_user_account_id").references(
