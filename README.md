@@ -1,39 +1,39 @@
-# Elysia with Bun runtime
+# Haris Payroll backend
 
-## Getting Started
-To get started with this template, simply paste this command into your terminal:
-```bash
-bun create elysia ./elysia-example
-```
+Bun, Elysia, Drizzle, and PostgreSQL 16. Start with the root repository's
+`docs/sprint-readiness.md` and `docs/two-week-three-person-plan.md`.
 
-## Development
-To start the development server run:
+Run commands from this package:
+
 ```bash
+bun install --frozen-lockfile
+test -f .env || cp .env.example .env
+bun run db:up
+bun run db:migrate
 bun run dev
 ```
 
-Open http://localhost:3000/ with your browser to see the result.
-
-## Database
-
-Create the local environment file and change the connection string to match the
-root PostgreSQL service:
+Match `DATABASE_URL` in `.env` to root Compose credentials and the host database
+port. Container development starts from the root with `docker compose up --build
+-d --wait`; containers apply migrations before starting the API.
 
 ```bash
-cp .env.example .env
+bun run typecheck
+bun test
+# Disposable migrated database only; adjust the port to your test stack.
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:55433/haris_payroll bun test
 ```
 
-Generate and apply Drizzle migrations:
+Without `TEST_DATABASE_URL`, live database tests are skipped. Test fixtures roll
+back, but identity sequences can advance. Never point tests at production.
 
-```bash
-bun run db:up
-bun run db:generate
-bun run db:migrate
-```
+`src/app.ts` composes Elysia and can be tested without opening a listening socket.
+`src/index.ts` starts the process. Features follow
+route → controller → service → repository → database; controllers invoke mappers.
 
-`db:generate` only reads the schema. `db:migrate` connects to PostgreSQL and
-therefore requires a non-empty `DATABASE_URL` in `.env`.
+The sprint schema is frozen. `bun run db:generate` checks for drift; coordinate
+schema/migration changes with Person C. Do not use `db:push` to bypass migration
+review. The canonical migration directory is `drizzle/`.
 
-`bun run db:up` starts the root Compose PostgreSQL service and reads the root
-`.env` file. Stop only that database service with `bun run db:down`; neither
-command reads, converts, resets, or deletes legacy MySQL data.
+`bun run db:down` stops root development PostgreSQL and preserves its volume.
+Legacy MySQL data is never read, converted, reset, or removed by these commands.

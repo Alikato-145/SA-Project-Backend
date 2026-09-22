@@ -1,9 +1,2 @@
 import Elysia from "elysia";
-import { appConfig } from "./core/config/aqpp.config";
-
-export const app = new Elysia()
-  .get("/", () => "Hello Elysia")
-  .listen({
-    hostname: appConfig.elysiaHost,
-    port: appConfig.elysiaPort,
-  });
+export const app = new Elysia().get("/", () => "Hello Elysia");

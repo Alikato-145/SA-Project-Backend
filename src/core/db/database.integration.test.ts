@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "pg";
 
 const configPath = new URL("../config/env.config.ts", import.meta.url).pathname;
@@ -49,14 +49,18 @@ describe("database URL safety", () => {
   });
 });
 
-const databaseUrl = process.env.DATABASE_URL;
+// Opt in to a disposable database explicitly; never write fixtures to a developer's
+// normal DATABASE_URL just because Bun loaded their .env file.
+const databaseUrl = process.env.TEST_DATABASE_URL;
 const client = databaseUrl ? new Client({ connectionString: databaseUrl }) : undefined;
 
 const catalogTest = databaseUrl ? test : test.skip;
 
-catalogTest("PostgreSQL catalog contains the canonical baseline", async () => {
-  await client!.connect();
+beforeAll(async () => {
+  await client?.connect();
+});
 
+catalogTest("PostgreSQL catalog contains the canonical baseline", async () => {
   const [{ table_count }] = (
     await client!.query<{ table_count: string }>(
       "select count(*) as table_count from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'",
@@ -137,6 +141,52 @@ catalogTest("installs PostgreSQL history protections", async () => {
     'payroll_items_locked_immutable',
     'payroll_records_locked_immutable',
   ]);
+});
+
+catalogTest("audit history rejects updates and deletes", async () => {
+  await client!.query("BEGIN");
+  try {
+    const { rows: [entry] } = await client!.query<{ id: string }>(
+      "insert into audit_logs (action, table_name, record_id) values ('readiness', 'readiness', 'test') returning id",
+    );
+    for (const statement of [
+      "update audit_logs set action = 'rewritten' where id = $1",
+      "delete from audit_logs where id = $1",
+    ]) {
+      await client!.query("SAVEPOINT rejected_write");
+      await expect(client!.query(statement, [entry!.id])).rejects.toThrow("append-only");
+      await client!.query("ROLLBACK TO SAVEPOINT rejected_write");
+    }
+    const { rows } = await client!.query("select action from audit_logs where id = $1", [entry!.id]);
+    expect(rows).toEqual([{ action: "readiness" }]);
+  } finally {
+    await client!.query("ROLLBACK");
+  }
+});
+
+catalogTest("schedule ranges reject a shared end date and allow the next day", async () => {
+  await client!.query("BEGIN");
+  try {
+    const code = `test-${crypto.randomUUID().slice(0, 20)}`;
+    const { rows: [shop] } = await client!.query<{ id: string }>(
+      "insert into shops (code, name) values ($1, 'Readiness fixture') returning id", [code],
+    );
+    const { rows: [branch] } = await client!.query<{ id: string }>(
+      "insert into branches (shop_id, code, name) values ($1, $2, 'Readiness fixture') returning id",
+      [shop!.id, code],
+    );
+    const insert = "insert into branch_schedules (branch_id, work_start_time, effective_from, effective_to) values ($1, '09:00', $2, $3)";
+    await client!.query(insert, [branch!.id, "2026-09-01", "2026-09-15"]);
+    await client!.query("SAVEPOINT overlap");
+    await expect(client!.query(insert, [branch!.id, "2026-09-15", null]))
+      .rejects.toThrow("branch_schedules_no_overlap");
+    await client!.query("ROLLBACK TO SAVEPOINT overlap");
+    await client!.query(insert, [branch!.id, "2026-09-16", null]);
+    const { rows } = await client!.query("select id from branch_schedules where branch_id = $1", [branch!.id]);
+    expect(rows).toHaveLength(2);
+  } finally {
+    await client!.query("ROLLBACK");
+  }
 });
 
 afterAll(async () => {
