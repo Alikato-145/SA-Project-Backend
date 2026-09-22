@@ -8,11 +8,13 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
+    "db:seed": "bun run src/db/seed.ts",
     "db:up": "docker compose -f ../compose.yaml up -d --wait postgres",
     "db:down": "docker compose -f ../compose.yaml stop postgres",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elysiajs/jwt": "^1.4.2",
     "dotenv": "^17.2.2",
     "drizzle-orm": "^0.44.5",
     "elysia": "latest",
