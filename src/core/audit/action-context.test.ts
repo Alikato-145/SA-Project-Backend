@@ -13,6 +13,10 @@ describe("audit action context", () => {
     }
   });
 
+  test("generates a valid request ID without requiring a bound crypto method", () => {
+    expect(isValidRequestId(resolveRequestId(undefined))).toBe(true);
+  });
+
   test("validates action and target conventions", () => {
     const context = createActionContext({
       requestId: "req-1",
@@ -25,4 +29,3 @@ describe("audit action context", () => {
     expect(() => createActionContext({ ...context, target: { tableName: "employees", recordId: "0" } })).toThrow();
   });
 });
-

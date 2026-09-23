@@ -36,7 +36,15 @@ export const allowAuditFields = <K extends string>(
 export const ACCOUNT_AUDIT_FIELDS = ["id", "username", "employee_id", "status", "failed_login_attempts", "locked_until"] as const;
 export const ROLE_GRANT_AUDIT_FIELDS = ["id", "user_account_id", "role_id", "branch_id", "department_id", "granted_at"] as const;
 export const BANK_ACCOUNT_AUDIT_FIELDS = ["id", "employee_id", "bank_code", "bank_name", "account_number_last4", "is_primary", "is_active"] as const;
+export const SHOP_AUDIT_FIELDS = ["id", "code", "name", "is_active"] as const;
+export const BRANCH_AUDIT_FIELDS = ["id", "shop_id", "code", "name", "address", "timezone", "is_active"] as const;
+export const DEPARTMENT_AUDIT_FIELDS = ["id", "branch_id", "code", "name", "is_active"] as const;
+export const POSITION_AUDIT_FIELDS = ["id", "shop_id", "code", "name", "is_active"] as const;
 
 export const accountAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, ACCOUNT_AUDIT_FIELDS);
 export const roleGrantAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, ROLE_GRANT_AUDIT_FIELDS);
 export const bankAccountAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, BANK_ACCOUNT_AUDIT_FIELDS);
+export const shopAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, SHOP_AUDIT_FIELDS);
+export const branchAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, BRANCH_AUDIT_FIELDS);
+export const departmentAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, DEPARTMENT_AUDIT_FIELDS);
+export const positionAuditSnapshot = (source: Record<string, unknown>) => allowAuditFields(source, POSITION_AUDIT_FIELDS);
