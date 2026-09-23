@@ -8,7 +8,6 @@ import { auditLogs } from "./audit.schema";
 
 const finalActionPattern =
   /^[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*\.(?:succeeded|failed)$/;
-const stableReasonPattern = /^[A-Z][A-Z0-9_]*$/;
 
 export interface AuditEvent {
   actorAccountId: string | null;
@@ -105,9 +104,11 @@ const validateEvent = (event: AuditEvent): void => {
   if (
     event.reason !== undefined &&
     event.reason !== null &&
-    !stableReasonPattern.test(event.reason)
+    (event.reason.length < 1 ||
+      event.reason.length > 500 ||
+      event.reason.trim() !== event.reason)
   ) {
-    throw new Error("Audit reason must be a stable public code");
+    throw new Error("Audit reason must be trimmed text between 1 and 500 characters");
   }
 };
 

@@ -7,7 +7,7 @@ import { shops } from "../shop/shop.schema";
 import { auditLogs } from "./audit.schema";
 import { auditRepository } from "./audit.repository";
 
-const databaseTest = process.env.DATABASE_URL ? test : test.skip;
+const databaseTest = process.env.DATABASE_INTEGRATION === "1" ? test : test.skip;
 
 describe("audit database contract", () => {
   databaseTest(
@@ -104,5 +104,5 @@ describe("audit database contract", () => {
 });
 
 afterAll(async () => {
-  if (process.env.DATABASE_URL) await closeDatabase();
+  if (process.env.DATABASE_INTEGRATION === "1") await closeDatabase();
 });

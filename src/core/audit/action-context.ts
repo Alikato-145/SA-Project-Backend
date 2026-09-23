@@ -24,7 +24,7 @@ export const isValidRequestId = (value: string): boolean => requestIdPattern.tes
 
 export const resolveRequestId = (
   supplied: string | null | undefined,
-  generate: () => string = crypto.randomUUID,
+  generate: () => string = () => crypto.randomUUID(),
 ): string => (supplied && isValidRequestId(supplied) ? supplied : generate());
 
 export const createActionContext = (input: {
@@ -50,4 +50,3 @@ export const createActionContext = (input: {
     target: Object.freeze({ ...input.target }),
   });
 };
-
