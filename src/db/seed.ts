@@ -3,6 +3,7 @@ import { closeDatabase, db } from "../core/db/client";
 import { hashPassword, verifyPassword } from "../core/auth/password";
 import { SYSTEM_ROLES } from "../features/role/role.bootstrap";
 import { roles } from "../features/role/role.schema";
+import { shops } from "../features/shop/shop.schema";
 import {
   userAccountRoles,
   userAccounts,
@@ -10,6 +11,7 @@ import {
 
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = "password";
+const DEMO_SHOP_CODE = "DEMO";
 
 const seed = async () => {
   if (process.env.NODE_ENV === "production") {
@@ -17,6 +19,18 @@ const seed = async () => {
   }
 
   await db.transaction(async (transaction) => {
+    const [demoShop] = await transaction
+      .select({ id: shops.id })
+      .from(shops)
+      .where(eq(shops.code, DEMO_SHOP_CODE))
+      .limit(1);
+    if (!demoShop) {
+      await transaction.insert(shops).values({
+        code: DEMO_SHOP_CODE,
+        name: "ร้านตัวอย่าง Haris",
+      });
+    }
+
     for (const systemRole of SYSTEM_ROLES) {
       const [existingRole] = await transaction
         .select()

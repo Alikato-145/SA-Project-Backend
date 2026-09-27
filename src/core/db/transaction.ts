@@ -4,6 +4,7 @@ export type DatabaseClient = typeof db;
 export type DatabaseTransaction = Parameters<
   Parameters<DatabaseClient["transaction"]>[0]
 >[0];
+export type Transaction = DatabaseTransaction;
 
 /** Backward-compatible name used by the shared-shell transaction tests. */
 export type Transaction = DatabaseTransaction;

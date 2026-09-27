@@ -6,7 +6,12 @@ const configPath = new URL("../config/env.config.ts", import.meta.url).pathname;
 const runConfig = async (databaseUrl: string) => {
   const child = Bun.spawn({
     cmd: [Bun.which("bun")!, configPath],
-    env: { ...process.env, DATABASE_URL: databaseUrl },
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      AUTH_JWT_SECRET: "test-only-secret-with-at-least-32-characters",
+      AUTH_ALLOWED_ORIGINS: "http://localhost:3000",
+    },
     stdout: "pipe",
     stderr: "pipe",
   });

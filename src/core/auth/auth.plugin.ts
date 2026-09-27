@@ -60,7 +60,7 @@ const toAuthenticatedGrant = (
   };
 };
 
-const assertUsableAccount = (
+export const assertUsableAccount = (
   record: ActorAccountRecord,
   now: Date,
 ): AuthenticatedActor => {
