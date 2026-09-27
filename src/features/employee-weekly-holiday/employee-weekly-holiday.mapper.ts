@@ -1,0 +1,1 @@
+import type{HolidayDto}from"./employee-weekly-holiday.dto";import type{HolidayRecord}from"./employee-weekly-holiday.repository";export const toHolidayDto=(r:HolidayRecord):HolidayDto=>({id:r.id,employee_id:r.employeeId,weekday:r.weekday,effective_from:r.effectiveFrom,effective_to:r.effectiveTo});

@@ -1,19 +1,12 @@
 import { db } from "./client";
 
-export type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-type TransactionExecutor = {
-  transaction<T>(work: (tx: Transaction) => Promise<T>): Promise<T>;
-};
-
-export const withTransaction = <T>(
-  work: (tx: Transaction) => Promise<T>,
-  executor: TransactionExecutor = db,
-) => executor.transaction(work);
 export type DatabaseClient = typeof db;
 export type DatabaseTransaction = Parameters<
   Parameters<DatabaseClient["transaction"]>[0]
 >[0];
+
+/** Backward-compatible name used by the shared-shell transaction tests. */
+export type Transaction = DatabaseTransaction;
 
 /** Common persistence surface accepted by repositories inside or outside a transaction. */
 export type DatabaseExecutor = Pick<
