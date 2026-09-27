@@ -143,3 +143,14 @@ export const parseIanaTimezone = (
 
   return timezone;
 };
+
+
+export interface AssignmentOrganizationValidationService {
+  validateActiveAssignmentPath(executor: import("../../core/db/transaction").DatabaseExecutor, path: { branchId: string; departmentId: string; positionId: string }): Promise<void>;
+}
+export const createAssignmentOrganizationValidationService = (repository: import("./organization.assignment.repository").AssignmentOrganizationPathRepository): AssignmentOrganizationValidationService => ({
+  async validateActiveAssignmentPath(executor, path) {
+    parseDecimalBigIntId(path.branchId, "branch_id"); parseDecimalBigIntId(path.departmentId, "department_id"); parseDecimalBigIntId(path.positionId, "position_id");
+    if (!(await repository.isActivePath(executor, path))) throw new ApplicationError("INVALID_ORGANIZATION_RELATION");
+  },
+});

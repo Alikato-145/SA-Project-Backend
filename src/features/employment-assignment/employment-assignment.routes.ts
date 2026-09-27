@@ -1,0 +1,10 @@
+import Elysia,{t} from "elysia";
+import { requestIdPlugin } from "../../core/audit/request-id.plugin";
+import type { AuthenticatedActor } from "../../core/auth/auth.types";
+import { validateCookieMutationRequest } from "../../core/auth/csrf-origin";
+import { ApplicationError } from "../../core/errors/application.error";
+import { toPublicErrorResult } from "../../core/errors/error-boundary";
+import { createEmploymentAssignmentController } from "./employment-assignment.controller";
+import type { EmploymentAssignmentService } from "./employment-assignment.service";
+const id=t.String({pattern:"^[1-9][0-9]*$",maxLength:16});const nullableDate=t.Union([t.String(),t.Null()]);const body=t.Object({branch_id:id,department_id:id,position_id:id,employment_type:t.String(),base_salary:t.String(),welfare_amount:t.String(),effective_from:t.String(),effective_to:t.Optional(nullableDate)},{additionalProperties:false});
+export const createEmploymentAssignmentRoutes=(options:{service:EmploymentAssignmentService;authenticate(request:Request):Promise<AuthenticatedActor>;allowedOrigins:readonly string[]})=>{const controller=createEmploymentAssignmentController(options.service);return new Elysia({name:"employment-assignment-routes",prefix:"/api/v1",normalize:false}).use(requestIdPlugin).derive(async({request})=>({actor:await options.authenticate(request)})).onBeforeHandle(({request})=>{const r=validateCookieMutationRequest(request,options.allowedOrigins);if(!r.allowed&&r.rejection)throw new ApplicationError(r.rejection)}).onError(({code,error,requestId,set})=>{const r=toPublicErrorResult(code==="VALIDATION"?new ApplicationError("VALIDATION_ERROR"):error,requestId);set.status=r.status;return r.body}).get("/employees/:employee_id/assignments",({actor,params,requestId})=>controller.list({actor,employeeId:params.employee_id,requestId}),{params:t.Object({employee_id:id})}).post("/employees/:employee_id/assignments",({actor,params,body:input,requestId})=>controller.create({actor,employeeId:params.employee_id,body:input,requestId}),{params:t.Object({employee_id:id}),body});};
