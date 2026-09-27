@@ -6,6 +6,9 @@ export type DatabaseTransaction = Parameters<
 >[0];
 export type Transaction = DatabaseTransaction;
 
+/** Backward-compatible name used by the shared-shell transaction tests. */
+export type Transaction = DatabaseTransaction;
+
 /** Common persistence surface accepted by repositories inside or outside a transaction. */
 export type DatabaseExecutor = Pick<
   DatabaseClient,

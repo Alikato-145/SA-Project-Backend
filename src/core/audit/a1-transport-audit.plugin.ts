@@ -12,22 +12,101 @@ export interface RegisteredA1Action {
 }
 
 const sentinel = (value: string) => () => value;
-const capturedId = (index: number) => (match: RegExpMatchArray) => match[index] ?? "unknown";
+const capturedId = (index: number) => (match: RegExpMatchArray) =>
+  match[index] ?? "unknown";
 
 export const A1_ACTION_REGISTRY: readonly RegisteredA1Action[] = [
-  { method: "POST", pattern: /^\/api\/v1\/auth\/login\/?$/, actionBase: "authentication.session.login", tableName: "user_accounts", recordId: sentinel("unknown") },
-  { method: "POST", pattern: /^\/api\/v1\/auth\/logout\/?$/, actionBase: "authentication.session.logout", tableName: "user_accounts", recordId: sentinel("self") },
-  { method: "GET", pattern: /^\/api\/v1\/auth\/me\/?$/, actionBase: "authentication.session.view", tableName: "user_accounts", recordId: sentinel("self") },
-  { method: "GET", pattern: /^\/api\/v1\/accounts\/?$/, actionBase: "account.catalog.list", tableName: "user_accounts", recordId: sentinel("collection") },
-  { method: "POST", pattern: /^\/api\/v1\/accounts\/?$/, actionBase: "account.profile.create", tableName: "user_accounts", recordId: sentinel("unknown") },
-  { method: "GET", pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/?$/, actionBase: "account.profile.read", tableName: "user_accounts", recordId: capturedId(1) },
-  { method: "PATCH", pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/status\/?$/, actionBase: "account.status.change", tableName: "user_accounts", recordId: capturedId(1) },
-  { method: "POST", pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/reset-password\/?$/, actionBase: "account.credential.reset", tableName: "user_accounts", recordId: capturedId(1) },
-  { method: "POST", pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/unlock\/?$/, actionBase: "account.lock.unlock", tableName: "user_accounts", recordId: capturedId(1) },
-  { method: "GET", pattern: /^\/api\/v1\/roles\/?$/, actionBase: "role.catalog.read", tableName: "roles", recordId: sentinel("collection") },
-  { method: "POST", pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/roles\/?$/, actionBase: "role.grant.create", tableName: "user_account_roles", recordId: capturedId(1) },
-  { method: "DELETE", pattern: /^\/api\/v1\/accounts\/[1-9]\d*\/roles\/([1-9]\d*)\/?$/, actionBase: "role.grant.revoke", tableName: "user_account_roles", recordId: capturedId(1) },
-  { method: "GET", pattern: /^\/api\/v1\/audit-logs\/?$/, actionBase: "audit.history.list", tableName: "audit_logs", recordId: sentinel("collection") },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/auth\/login\/?$/,
+    actionBase: "authentication.session.login",
+    tableName: "user_accounts",
+    recordId: sentinel("unknown"),
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/auth\/logout\/?$/,
+    actionBase: "authentication.session.logout",
+    tableName: "user_accounts",
+    recordId: sentinel("self"),
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/auth\/me\/?$/,
+    actionBase: "authentication.session.view",
+    tableName: "user_accounts",
+    recordId: sentinel("self"),
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/accounts\/?$/,
+    actionBase: "account.catalog.list",
+    tableName: "user_accounts",
+    recordId: sentinel("collection"),
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/accounts\/?$/,
+    actionBase: "account.profile.create",
+    tableName: "user_accounts",
+    recordId: sentinel("unknown"),
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/?$/,
+    actionBase: "account.profile.read",
+    tableName: "user_accounts",
+    recordId: capturedId(1),
+  },
+  {
+    method: "PATCH",
+    pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/status\/?$/,
+    actionBase: "account.status.change",
+    tableName: "user_accounts",
+    recordId: capturedId(1),
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/reset-password\/?$/,
+    actionBase: "account.credential.reset",
+    tableName: "user_accounts",
+    recordId: capturedId(1),
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/unlock\/?$/,
+    actionBase: "account.lock.unlock",
+    tableName: "user_accounts",
+    recordId: capturedId(1),
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/roles\/?$/,
+    actionBase: "role.catalog.read",
+    tableName: "roles",
+    recordId: sentinel("collection"),
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/accounts\/([1-9]\d*)\/roles\/?$/,
+    actionBase: "role.grant.create",
+    tableName: "user_account_roles",
+    recordId: capturedId(1),
+  },
+  {
+    method: "DELETE",
+    pattern: /^\/api\/v1\/accounts\/[1-9]\d*\/roles\/([1-9]\d*)\/?$/,
+    actionBase: "role.grant.revoke",
+    tableName: "user_account_roles",
+    recordId: capturedId(1),
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/v1\/audit-logs\/?$/,
+    actionBase: "audit.history.list",
+    tableName: "audit_logs",
+    recordId: sentinel("collection"),
+  },
 ] as const;
 
 export const resolveRegisteredA1Action = (request: Request) => {
@@ -51,11 +130,17 @@ export const observeA1TransportFailure = async (
   const resolved = resolveRegisteredA1Action(request);
   if (!resolved) return;
   const { registration, match } = resolved;
-  await actions.observeFailure(createActionContext({
-    requestId: resolveRequestId(requestId),
-    actionBase: registration.actionBase,
-    target: { tableName: registration.tableName, recordId: registration.recordId(match) },
-  }), error);
+  await actions.observeFailure(
+    createActionContext({
+      requestId: resolveRequestId(requestId),
+      actionBase: registration.actionBase,
+      target: {
+        tableName: registration.tableName,
+        recordId: registration.recordId(match),
+      },
+    }),
+    error,
+  );
 };
 
 /** Add once at the A1 composition boundary; it does not format HTTP responses. */
