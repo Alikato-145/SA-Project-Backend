@@ -1,4 +1,4 @@
-import type { EmployeeHrDto, EmployeeOwnDto, EmployeeResponseDto, EmployeeTeamDto } from "./employee.dto";
+import type { EmployeeHrDto, EmployeeOnboardingResponseDto, EmployeeOwnDto, EmployeeResponseDto, EmployeeTeamDto } from "./employee.dto";
 import type { EmployeeReadRecord } from "./employee.repository";
 import type { VisibleEmployee } from "./employee.service";
 
@@ -29,3 +29,21 @@ export const toEmployeeHrDto = (record: EmployeeReadRecord): EmployeeHrDto => ({
 });
 export const toEmployeeResponseDto = ({ record, view }: VisibleEmployee): EmployeeResponseDto =>
   view === "hr" ? toEmployeeHrDto(record) : view === "own" ? toEmployeeOwnDto(record) : toEmployeeTeamDto(record);
+
+export const toEmployeeOnboardingResponseDto = (result: {
+  employee: VisibleEmployee;
+  assignmentId: string;
+  bankAccountId: string | null;
+  holidayIds: string[];
+  accountId: string | null;
+  temporaryPassword: string | null;
+}): EmployeeOnboardingResponseDto => ({
+  employee: toEmployeeResponseDto(result.employee),
+  assignment_id: result.assignmentId,
+  bank_account_id: result.bankAccountId,
+  weekly_holiday_ids: result.holidayIds,
+  account_id: result.accountId,
+  ...(result.temporaryPassword === null
+    ? {}
+    : { temporary_password: result.temporaryPassword }),
+});

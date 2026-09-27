@@ -1,5 +1,8 @@
 import { ApplicationError } from "../../core/errors/application.error";
 import { parseBusinessDate, parseEmployeeId } from "./employee.validation";
+import { parseAssignmentBody, type AssignmentBodyDto } from "../employment-assignment/employment-assignment.dto";
+import { parseBankCreate, type BankCreateBody } from "../employee-bank-account/employee-bank-account.dto";
+import { parseHolidayCreate } from "../employee-weekly-holiday/employee-weekly-holiday.dto";
 
 export type EmployeeStatus = "active" | "inactive" | "suspended" | "terminated";
 export interface EmployeeListQueryDto {
@@ -130,4 +133,20 @@ export const parseEmployeeStatus = (body: EmployeeStatusBodyDto): EmployeeStatus
   if (status === "terminated" && terminatedAt === null) invalid("terminated_at");
   if (status !== "terminated" && terminatedAt !== null) invalid("terminated_at");
   return { status, terminatedAt, reason: text(body.reason, "reason", 500) };
+};
+
+export interface EmployeeOnboardingBodyDto { employee: EmployeeCreateBodyDto; assignment: AssignmentBodyDto; bank_account?: BankCreateBody; weekly_holidays?: { weekday: unknown; effective_from: unknown; effective_to?: unknown }[]; account?: { username: unknown } }
+export interface EmployeeOnboardingResponseDto {
+  employee: EmployeeResponseDto;
+  assignment_id: string;
+  bank_account_id: string | null;
+  weekly_holiday_ids: string[];
+  account_id: string | null;
+  temporary_password?: string;
+}
+export const parseEmployeeOnboarding = (body: EmployeeOnboardingBodyDto) => {
+  if (!body || typeof body !== "object") invalid("body");
+  let account: { username: string } | undefined;
+  if (body.account !== undefined) { const username = text(body.account.username, "username", 100); if (!/^[A-Za-z0-9._-]{3,100}$/.test(username)) invalid("username"); account = { username }; }
+  return { employee: parseEmployeeCreate(body.employee), assignment: parseAssignmentBody(body.assignment), bankAccount: body.bank_account === undefined ? undefined : parseBankCreate(body.bank_account), weeklyHolidays: (body.weekly_holidays ?? []).map(parseHolidayCreate), account };
 };

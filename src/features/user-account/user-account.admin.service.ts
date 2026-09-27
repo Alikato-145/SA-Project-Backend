@@ -81,7 +81,24 @@ export const createUserAccountAdminService = (
   const generateTemporaryPassword =
     dependencies.temporaryPasswordGenerator ?? defaultTemporaryPassword;
 
+  const createAccountInTransaction = async (executor: DatabaseExecutor, command: { actor: AuthenticatedActor; username: string; employeeId: string | null }): Promise<CreatedAccountResult> => {
+    requireAdministrator(command.actor);
+    const username = command.username.trim();
+    if (!/^[A-Za-z0-9._-]{3,100}$/.test(username)) throw new ApplicationError("VALIDATION_ERROR");
+    if (command.employeeId !== null) requireId(command.employeeId);
+    if (await dependencies.repository.findByUsername(executor, username)) throw new ApplicationError("DUPLICATE_USERNAME");
+    if (command.employeeId !== null) {
+      if (!(await dependencies.repository.employeeExists(executor, command.employeeId))) throw new ApplicationError("RESOURCE_NOT_FOUND");
+      if (await dependencies.repository.findByEmployeeId(executor, command.employeeId)) throw new ApplicationError("EMPLOYEE_ACCOUNT_ALREADY_EXISTS");
+    }
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await passwordHasher(temporaryPassword);
+    const account = await dependencies.repository.insert(executor, { username, employeeId: command.employeeId, passwordHash });
+    return { account, grants: [], temporaryPassword };
+  };
+
   return {
+    createAccountInTransaction,
     listAccounts(command: {
       actor: AuthenticatedActor;
       requestId: string;
@@ -143,49 +160,9 @@ export const createUserAccountAdminService = (
       );
       return dependencies.audit.actions.observeMutation(observation, () =>
         dependencies.transactionRunner.transaction(async (executor) => {
-          requireAdministrator(command.actor);
-          const username = command.username.trim();
-          if (!/^[A-Za-z0-9._-]{3,100}$/.test(username)) {
-            throw new ApplicationError("VALIDATION_ERROR");
-          }
-          if (command.employeeId !== null) requireId(command.employeeId);
-          if (
-            await dependencies.repository.findByUsername(executor, username)
-          ) {
-            throw new ApplicationError("DUPLICATE_USERNAME");
-          }
-          if (command.employeeId !== null) {
-            if (
-              !(await dependencies.repository.employeeExists(
-                executor,
-                command.employeeId,
-              ))
-            ) {
-              throw new ApplicationError("RESOURCE_NOT_FOUND");
-            }
-            if (
-              await dependencies.repository.findByEmployeeId(
-                executor,
-                command.employeeId,
-              )
-            ) {
-              throw new ApplicationError("EMPLOYEE_ACCOUNT_ALREADY_EXISTS");
-            }
-          }
-
-          const temporaryPassword = generateTemporaryPassword();
-          const passwordHash = await passwordHasher(temporaryPassword);
-          const account = await dependencies.repository.insert(executor, {
-            username,
-            employeeId: command.employeeId,
-            passwordHash,
-          });
-          const successContext = context(
-            command.actor,
-            command.requestId,
-            "account.profile.create",
-            account.id,
-          );
+          const created = await createAccountInTransaction(executor, { actor: command.actor, username: command.username, employeeId: command.employeeId });
+          const { account } = created;
+          const successContext = context(command.actor, command.requestId, "account.profile.create", account.id);
           const receipt = await dependencies.audit.domain.record(
             executor,
             successContext,
@@ -194,7 +171,7 @@ export const createUserAccountAdminService = (
             },
           );
           return dependencies.audit.domain.complete(
-            { account, grants: [], temporaryPassword },
+            created,
             receipt,
           );
         }),
@@ -364,6 +341,5 @@ export const createUserAccountAdminService = (
   };
 };
 
-export type UserAccountAdminService = ReturnType<
-  typeof createUserAccountAdminService
->;
+export type UserAccountAdminInternalService = ReturnType<typeof createUserAccountAdminService>;
+export type UserAccountAdminService = Omit<UserAccountAdminInternalService, "createAccountInTransaction">;

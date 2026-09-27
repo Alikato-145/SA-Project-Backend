@@ -5,6 +5,8 @@ import type { AuthenticatedActor } from "../../core/auth/auth.types";
 import type { DatabaseExecutor, TransactionRunner } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
 import type { EmployeeCreateCommand, EmployeeListFilters, EmployeeStatus, EmployeeUpdateCommand } from "./employee.dto";
+import type { AssignmentCommand } from "../employment-assignment/employment-assignment.dto";
+import type { OnboardingAccountCreationPort, OnboardingAssignmentPort, OnboardingBankPort, OnboardingHolidayPort } from "./employee.ports";
 import { employeeRepository, type EmployeeReadRecord, type EmployeeRepositoryPort, type EmployeeWriteRepositoryPort } from "./employee.repository";
 import { canAdministerEmployees, projectEmployeeVisibility } from "./employee.scope";
 import { employeeAuditSnapshot } from "./employee.types";
@@ -26,6 +28,7 @@ export interface EmployeeServiceDependencies {
   actions: ActionObserver;
   domain?: DomainAuditObserver;
   today?: () => string;
+  onboarding?: { assignment: OnboardingAssignmentPort; bank: OnboardingBankPort; holiday: OnboardingHolidayPort; account: OnboardingAccountCreationPort };
 }
 
 const currentBangkokDate = (): string => new Intl.DateTimeFormat("sv-SE", {
@@ -114,6 +117,25 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
           if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
           const receipt = await writes.domain.record(executor, context, { oldData: snapshot(current), newData: snapshot(updated) });
           return writes.domain.complete({ record: updated, view: "hr" as const }, receipt);
+        });
+      });
+    },
+    async onboardEmployee(command: { actor: AuthenticatedActor; requestId: string; employee: EmployeeCreateCommand; assignment: AssignmentCommand; bankAccount?: { bankCode: string; bankName: string; accountHolderName: string; accountNumber: string; isPrimary: boolean | undefined }; weeklyHolidays: { weekday: number; effectiveFrom: string; effectiveTo: string | null }[]; account?: { username: string } }) {
+      const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.onboard", target: { tableName: "employees", recordId: "unknown" } });
+      return dependencies.actions.observeMutation(context, () => {
+        const writes = requireWrites(dependencies);
+        if (!dependencies.onboarding) throw new Error("Employee onboarding dependencies are not configured");
+        return writes.runner.transaction(async (executor) => {
+          requireAdministrator(command.actor); validateCreate(command.employee);
+          if (await writes.repository.findIdentityConflict(executor, command.employee)) throw new ApplicationError("DUPLICATE_IDENTITY");
+          const employee = await writes.repository.insert(executor, command.employee);
+          const assignment = await dependencies.onboarding!.assignment.createAssignmentInTransaction(executor, { actor: command.actor, employeeId: employee.id, ...command.assignment });
+          const bank = command.bankAccount ? await dependencies.onboarding!.bank.addBankAccountInTransaction(executor, { employeeId: employee.id, ...command.bankAccount }) : null;
+          const holidays = []; for (const holiday of command.weeklyHolidays) holidays.push(await dependencies.onboarding!.holiday.addHolidayInTransaction(executor, { employeeId: employee.id, ...holiday }));
+          const account = command.account ? await dependencies.onboarding!.account.createAccountInTransaction(executor, { actor: command.actor, username: command.account.username, employeeId: employee.id }) : null;
+          const success = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.onboard", target: { tableName: "employees", recordId: employee.id } });
+          const receipt = await writes.domain.record(executor, success, { newData: { ...snapshot(employee), assignment_id: assignment.id, bank_account_id: bank?.id ?? null, holiday_ids: holidays.map(item => item.id), account_id: account?.account.id ?? null } });
+          return writes.domain.complete({ employee: { record: employee, view: "hr" as const }, assignmentId: assignment.id, bankAccountId: bank?.id ?? null, holidayIds: holidays.map(item => item.id), accountId: account?.account.id ?? null, temporaryPassword: account?.temporaryPassword ?? null }, receipt);
         });
       });
     },

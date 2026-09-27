@@ -1,7 +1,7 @@
 import type { AuthenticatedActor } from "../../core/auth/auth.types";
-import type { EmployeeCreateBodyDto, EmployeeListQueryDto, EmployeeStatusBodyDto, EmployeeUpdateBodyDto } from "./employee.dto";
-import { parseEmployeeCreate, parseEmployeeListFilters, parseEmployeeStatus, parseEmployeeUpdate } from "./employee.dto";
-import { toEmployeeResponseDto } from "./employee.mapper";
+import type { EmployeeCreateBodyDto, EmployeeListQueryDto, EmployeeOnboardingBodyDto, EmployeeStatusBodyDto, EmployeeUpdateBodyDto } from "./employee.dto";
+import { parseEmployeeCreate, parseEmployeeListFilters, parseEmployeeOnboarding, parseEmployeeStatus, parseEmployeeUpdate } from "./employee.dto";
+import { toEmployeeOnboardingResponseDto, toEmployeeResponseDto } from "./employee.mapper";
 import type { EmployeeService } from "./employee.service";
 import { parseEmployeeId } from "./employee.validation";
 
@@ -18,6 +18,14 @@ export const createEmployeeController = (service: EmployeeService) => ({
   async create(input: { actor: AuthenticatedActor; requestId: string; body: EmployeeCreateBodyDto }) {
     const result = await service.createEmployee({ actor: input.actor, requestId: input.requestId, ...parseEmployeeCreate(input.body) });
     return { data: toEmployeeResponseDto(result), request_id: input.requestId };
+  },
+  async onboard(input: { actor: AuthenticatedActor; requestId: string; body: EmployeeOnboardingBodyDto }) {
+    const result = await service.onboardEmployee({
+      actor: input.actor,
+      requestId: input.requestId,
+      ...parseEmployeeOnboarding(input.body),
+    });
+    return { data: toEmployeeOnboardingResponseDto(result), request_id: input.requestId };
   },
   async update(input: { actor: AuthenticatedActor; requestId: string; employeeId: string; body: EmployeeUpdateBodyDto }) {
     const result = await service.updateEmployee({ actor: input.actor, requestId: input.requestId, employeeId: input.employeeId, ...parseEmployeeUpdate(input.body) });
