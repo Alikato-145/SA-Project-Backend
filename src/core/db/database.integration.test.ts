@@ -49,7 +49,9 @@ describe("database URL safety", () => {
   });
 });
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_INTEGRATION === "1"
+  ? process.env.DATABASE_URL
+  : undefined;
 const client = databaseUrl ? new Client({ connectionString: databaseUrl }) : undefined;
 
 const catalogTest = databaseUrl ? test : test.skip;
