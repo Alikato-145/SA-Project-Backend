@@ -1,5 +1,5 @@
 import { ApplicationError } from "../../core/errors/application.error";
-import { parseEmployeeId } from "./employee.validation";
+import { parseBusinessDate, parseEmployeeId } from "./employee.validation";
 
 export type EmployeeStatus = "active" | "inactive" | "suspended" | "terminated";
 export interface EmployeeListQueryDto {
@@ -46,8 +46,34 @@ export interface EmployeeHrDto extends EmployeeOwnDto {
 
 export type EmployeeResponseDto = EmployeeTeamDto | EmployeeOwnDto | EmployeeHrDto;
 
+export interface EmployeeCreateBodyDto { employee_code: unknown; national_id?: unknown; passport_id?: unknown; first_name: unknown; last_name: unknown; phone?: unknown; personal_email?: unknown; address?: unknown; hire_date: unknown }
+export interface EmployeeUpdateBodyDto { national_id?: unknown; passport_id?: unknown; first_name?: unknown; last_name?: unknown; phone?: unknown; personal_email?: unknown; address?: unknown }
+export interface EmployeeStatusBodyDto { status: unknown; terminated_at?: unknown; reason: unknown }
+export interface EmployeeCreateCommand { employeeCode: string; nationalId: string | null; passportId: string | null; firstName: string; lastName: string; phone: string | null; personalEmail: string | null; address: string | null; hireDate: string }
+export type EmployeeUpdateCommand = Partial<Omit<EmployeeCreateCommand, "employeeCode" | "hireDate">>;
+export interface EmployeeStatusCommand { status: EmployeeStatus; terminatedAt: string | null; reason: string }
+
 const invalid = (field: string): never => {
   throw new ApplicationError("VALIDATION_ERROR", { fieldErrors: { [field]: ["Invalid value."] } });
+};
+const text = (value: unknown, field: string, max: number): string => {
+  if (typeof value !== "string") return invalid(field);
+  const result = value.trim();
+  if (!result || Array.from(result).length > max) return invalid(field);
+  return result;
+};
+const nullableText = (value: unknown, field: string, max: number): string | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return invalid(field);
+  const result = value.trim();
+  if (!result) return null;
+  if (Array.from(result).length > max) return invalid(field);
+  return result;
+};
+const email = (value: unknown): string | null => {
+  const result = nullableText(value, "personal_email", 255);
+  if (result !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result)) return invalid("personal_email");
+  return result;
 };
 const positiveInteger = (value: string | undefined, field: string, fallback: number, max: number): number => {
   if (value === undefined) return fallback;
@@ -70,4 +96,38 @@ export const parseEmployeeListFilters = (query: EmployeeListQueryDto): EmployeeL
     branchId: query.branch_id === undefined ? null : String(parseEmployeeId(query.branch_id, "branch_id")),
     departmentId: query.department_id === undefined ? null : String(parseEmployeeId(query.department_id, "department_id")),
   };
+};
+
+export const parseEmployeeCreate = (body: EmployeeCreateBodyDto): EmployeeCreateCommand => {
+  const result = {
+    employeeCode: text(body.employee_code, "employee_code", 30), nationalId: nullableText(body.national_id, "national_id", 20),
+    passportId: nullableText(body.passport_id, "passport_id", 30), firstName: text(body.first_name, "first_name", 100),
+    lastName: text(body.last_name, "last_name", 100), phone: nullableText(body.phone, "phone", 30),
+    personalEmail: email(body.personal_email), address: nullableText(body.address, "address", 2_000),
+    hireDate: parseBusinessDate(body.hire_date, "hire_date"),
+  };
+  if (result.nationalId === null && result.passportId === null) invalid("national_id");
+  return result;
+};
+
+export const parseEmployeeUpdate = (body: EmployeeUpdateBodyDto): EmployeeUpdateCommand => {
+  const result: EmployeeUpdateCommand = {};
+  if (body.national_id !== undefined) result.nationalId = nullableText(body.national_id, "national_id", 20);
+  if (body.passport_id !== undefined) result.passportId = nullableText(body.passport_id, "passport_id", 30);
+  if (body.first_name !== undefined) result.firstName = text(body.first_name, "first_name", 100);
+  if (body.last_name !== undefined) result.lastName = text(body.last_name, "last_name", 100);
+  if (body.phone !== undefined) result.phone = nullableText(body.phone, "phone", 30);
+  if (body.personal_email !== undefined) result.personalEmail = email(body.personal_email);
+  if (body.address !== undefined) result.address = nullableText(body.address, "address", 2_000);
+  if (Object.keys(result).length === 0) invalid("body");
+  return result;
+};
+
+export const parseEmployeeStatus = (body: EmployeeStatusBodyDto): EmployeeStatusCommand => {
+  if (typeof body.status !== "string" || !["active", "inactive", "suspended", "terminated"].includes(body.status)) invalid("status");
+  const status = body.status as EmployeeStatus;
+  const terminatedAt = body.terminated_at === undefined || body.terminated_at === null ? null : parseBusinessDate(body.terminated_at, "terminated_at");
+  if (status === "terminated" && terminatedAt === null) invalid("terminated_at");
+  if (status !== "terminated" && terminatedAt !== null) invalid("terminated_at");
+  return { status, terminatedAt, reason: text(body.reason, "reason", 500) };
 };

@@ -1,12 +1,14 @@
 import { createActionContext } from "../../core/audit/action-context";
 import type { ActionObserver } from "../../core/audit/action-observer";
+import type { DomainAuditObserver } from "../../core/audit/domain-audit-observer";
 import type { AuthenticatedActor } from "../../core/auth/auth.types";
-import type { DatabaseExecutor } from "../../core/db/transaction";
+import type { DatabaseExecutor, TransactionRunner } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
-import type { EmployeeListFilters } from "./employee.dto";
-import { employeeRepository, type EmployeeReadRecord, type EmployeeRepositoryPort } from "./employee.repository";
-import { projectEmployeeVisibility } from "./employee.scope";
-import { parseEmployeeId } from "./employee.validation";
+import type { EmployeeCreateCommand, EmployeeListFilters, EmployeeStatus, EmployeeUpdateCommand } from "./employee.dto";
+import { employeeRepository, type EmployeeReadRecord, type EmployeeRepositoryPort, type EmployeeWriteRepositoryPort } from "./employee.repository";
+import { canAdministerEmployees, projectEmployeeVisibility } from "./employee.scope";
+import { employeeAuditSnapshot } from "./employee.types";
+import { parseBusinessDate, parseEmployeeId } from "./employee.validation";
 
 export type EmployeeViewKind = "team" | "own" | "hr";
 export interface VisibleEmployee { record: EmployeeReadRecord; view: EmployeeViewKind }
@@ -19,7 +21,10 @@ export interface EmployeePage {
 export interface EmployeeServiceDependencies {
   rootExecutor: DatabaseExecutor;
   repository?: EmployeeRepositoryPort;
+  writeRepository?: EmployeeWriteRepositoryPort;
+  transactionRunner?: TransactionRunner;
   actions: ActionObserver;
+  domain?: DomainAuditObserver;
   today?: () => string;
 }
 
@@ -30,6 +35,17 @@ const viewFor = (actor: AuthenticatedActor, record: EmployeeReadRecord): Employe
   const visibility = projectEmployeeVisibility(actor);
   if (visibility.all) return "hr";
   return visibility.selfEmployeeId === record.id ? "own" : "team";
+};
+const requireWrites = (dependencies: EmployeeServiceDependencies) => {
+  if (!dependencies.transactionRunner || !dependencies.domain) throw new Error("Employee mutation dependencies are not configured");
+  return { runner: dependencies.transactionRunner, domain: dependencies.domain, repository: dependencies.writeRepository ?? employeeRepository };
+};
+const requireAdministrator = (actor: AuthenticatedActor) => { if (!canAdministerEmployees(actor)) throw new ApplicationError("FORBIDDEN_SCOPE"); };
+const fullVisibility = { all: true, selfEmployeeId: null, branchIds: [], departments: [] } as const;
+const snapshot = (record: EmployeeReadRecord) => employeeAuditSnapshot({ id: record.id, employee_code: record.employeeCode, status: record.status, hire_date: record.hireDate, terminated_at: record.terminatedAt });
+const validateCreate = (input: EmployeeCreateCommand) => {
+  if (!input.employeeCode.trim() || input.employeeCode.length > 30 || !input.firstName.trim() || input.firstName.length > 100 || !input.lastName.trim() || input.lastName.length > 100 || (!input.nationalId && !input.passportId)) throw new ApplicationError("VALIDATION_ERROR");
+  parseBusinessDate(input.hireDate, "hire_date");
 };
 const hasVisibility = (actor: AuthenticatedActor): boolean => {
   const scope = projectEmployeeVisibility(actor);
@@ -62,6 +78,62 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
         const record = await repository.findById(dependencies.rootExecutor, id, projectEmployeeVisibility(command.actor), today());
         if (!record) throw new ApplicationError("RESOURCE_NOT_FOUND");
         return { record, view: viewFor(command.actor, record) };
+      });
+    },
+    async createEmployee(command: EmployeeCreateCommand & { actor: AuthenticatedActor; requestId: string }): Promise<VisibleEmployee> {
+      const base = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.create", target: { tableName: "employees", recordId: "unknown" } });
+      return dependencies.actions.observeMutation(base, () => {
+        const writes = requireWrites(dependencies);
+        return writes.runner.transaction(async (executor) => {
+          requireAdministrator(command.actor); validateCreate(command);
+          if (await writes.repository.findIdentityConflict(executor, command)) throw new ApplicationError("DUPLICATE_IDENTITY");
+          const created = await writes.repository.insert(executor, command);
+          const success = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.create", target: { tableName: "employees", recordId: created.id } });
+          const receipt = await writes.domain.record(executor, success, { newData: snapshot(created) });
+          return writes.domain.complete({ record: created, view: "hr" as const }, receipt);
+        });
+      });
+    },
+    async updateEmployee(command: EmployeeUpdateCommand & { actor: AuthenticatedActor; requestId: string; employeeId: string }): Promise<VisibleEmployee> {
+      const id = String(parseEmployeeId(command.employeeId, "employee_id"));
+      const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.update", target: { tableName: "employees", recordId: id } });
+      return dependencies.actions.observeMutation(context, () => {
+        const writes = requireWrites(dependencies);
+        return writes.runner.transaction(async (executor) => {
+          requireAdministrator(command.actor);
+          const current = await writes.repository.findById(executor, id, fullVisibility, today());
+          if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          const update: EmployeeUpdateCommand = { ...command };
+          delete (update as Record<string, unknown>).actor; delete (update as Record<string, unknown>).requestId; delete (update as Record<string, unknown>).employeeId;
+          if (Object.keys(update).length === 0) throw new ApplicationError("VALIDATION_ERROR");
+          const nationalId = update.nationalId === undefined ? current.nationalId : update.nationalId;
+          const passportId = update.passportId === undefined ? current.passportId : update.passportId;
+          if (!nationalId && !passportId) throw new ApplicationError("VALIDATION_ERROR");
+          if (await writes.repository.findIdentityConflict(executor, { nationalId, passportId }, id)) throw new ApplicationError("DUPLICATE_IDENTITY");
+          const updated = await writes.repository.updateIdentity(executor, id, update);
+          if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          const receipt = await writes.domain.record(executor, context, { oldData: snapshot(current), newData: snapshot(updated) });
+          return writes.domain.complete({ record: updated, view: "hr" as const }, receipt);
+        });
+      });
+    },
+    async changeEmployeeStatus(command: { actor: AuthenticatedActor; requestId: string; employeeId: string; status: EmployeeStatus; terminatedAt: string | null; reason: string }): Promise<VisibleEmployee> {
+      const id = String(parseEmployeeId(command.employeeId, "employee_id"));
+      const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.status.change", target: { tableName: "employees", recordId: id } });
+      return dependencies.actions.observeMutation(context, () => {
+        const writes = requireWrites(dependencies);
+        return writes.runner.transaction(async (executor) => {
+          requireAdministrator(command.actor);
+          const current = await writes.repository.findById(executor, id, fullVisibility, today());
+          if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          const reason = command.reason.trim(); if (!reason || reason.length > 500) throw new ApplicationError("VALIDATION_ERROR");
+          if (command.status === "terminated") { if (!command.terminatedAt) throw new ApplicationError("VALIDATION_ERROR"); parseBusinessDate(command.terminatedAt, "terminated_at"); if (command.terminatedAt < current.hireDate) throw new ApplicationError("VALIDATION_ERROR"); }
+          else if (command.terminatedAt !== null) throw new ApplicationError("VALIDATION_ERROR");
+          const updated = await writes.repository.updateStatus(executor, id, command.status, command.status === "terminated" ? command.terminatedAt : null);
+          if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          const receipt = await writes.domain.record(executor, context, { oldData: snapshot(current), newData: snapshot(updated), reason });
+          return writes.domain.complete({ record: updated, view: "hr" as const }, receipt);
+        });
       });
     },
   };

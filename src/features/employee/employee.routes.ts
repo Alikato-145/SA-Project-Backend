@@ -14,6 +14,18 @@ const listQuery = t.Object({
   status: t.Optional(t.String()), branch_id: t.Optional(t.String()), department_id: t.Optional(t.String()),
 }, { additionalProperties: false });
 
+const nullableString = t.Union([t.String(), t.Null()]);
+const createBody = t.Object({
+  employee_code: t.String(), national_id: t.Optional(nullableString), passport_id: t.Optional(nullableString),
+  first_name: t.String(), last_name: t.String(), phone: t.Optional(nullableString),
+  personal_email: t.Optional(nullableString), address: t.Optional(nullableString), hire_date: t.String(),
+}, { additionalProperties: false });
+const updateBody = t.Object({
+  national_id: t.Optional(nullableString), passport_id: t.Optional(nullableString), first_name: t.Optional(t.String()),
+  last_name: t.Optional(t.String()), phone: t.Optional(nullableString), personal_email: t.Optional(nullableString), address: t.Optional(nullableString),
+}, { additionalProperties: false });
+const statusBody = t.Object({ status: t.String(), terminated_at: t.Optional(nullableString), reason: t.String() }, { additionalProperties: false });
+
 export interface EmployeeRoutesOptions {
   service: EmployeeService;
   authenticate(request: Request): Promise<AuthenticatedActor>;
@@ -23,7 +35,7 @@ export interface EmployeeRoutesOptions {
 /** Standalone A3 read routes; the A3 bundle will attach transport audit once. */
 export const createEmployeeRoutes = (options: EmployeeRoutesOptions) => {
   const controller = createEmployeeController(options.service);
-  return new Elysia({ name: "employee-read-routes", prefix: "/api/v1", normalize: false })
+  return new Elysia({ name: "employee-routes", prefix: "/api/v1", normalize: false })
     .use(requestIdPlugin)
     .derive(async ({ request }) => ({ actor: await options.authenticate(request) }))
     .onBeforeHandle(({ request }) => {
@@ -42,6 +54,16 @@ export const createEmployeeRoutes = (options: EmployeeRoutesOptions) => {
     })
     .get("/employees", ({ actor, query, requestId }) =>
       controller.list({ actor, query, requestId }), { query: listQuery })
+    .post("/employees", ({ actor, body, requestId }) =>
+      controller.create({ actor, body, requestId }), { body: createBody })
+    .patch("/employees/:employee_id/status", ({ actor, params, body, requestId }) =>
+      controller.changeStatus({ actor, employeeId: params.employee_id, body, requestId }), {
+        params: t.Object({ employee_id: decimalId }, { additionalProperties: false }), body: statusBody,
+      })
+    .patch("/employees/:employee_id", ({ actor, params, body, requestId }) =>
+      controller.update({ actor, employeeId: params.employee_id, body, requestId }), {
+        params: t.Object({ employee_id: decimalId }, { additionalProperties: false }), body: updateBody,
+      })
     .get("/employees/:employee_id", ({ actor, params, requestId }) =>
       controller.detail({ actor, employeeId: params.employee_id, requestId }), {
       params: t.Object({ employee_id: decimalId }, { additionalProperties: false }),
