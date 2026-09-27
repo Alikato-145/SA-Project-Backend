@@ -7,11 +7,8 @@ export const errorCodes = [
   "ORIGIN_NOT_ALLOWED",
   "JSON_CONTENT_TYPE_REQUIRED",
   "RESOURCE_NOT_FOUND",
-<<<<<<< Updated upstream
-=======
   "DUPLICATE_CODE",
   "DUPLICATE_IDENTITY",
->>>>>>> Stashed changes
   "DUPLICATE_USERNAME",
   "EMPLOYEE_ACCOUNT_ALREADY_EXISTS",
   "DUPLICATE_ROLE_GRANT",
@@ -36,11 +33,8 @@ export const errorStatusByCode = {
   ORIGIN_NOT_ALLOWED: 403,
   JSON_CONTENT_TYPE_REQUIRED: 415,
   RESOURCE_NOT_FOUND: 404,
-<<<<<<< Updated upstream
-=======
   DUPLICATE_CODE: 409,
   DUPLICATE_IDENTITY: 409,
->>>>>>> Stashed changes
   DUPLICATE_USERNAME: 409,
   EMPLOYEE_ACCOUNT_ALREADY_EXISTS: 409,
   DUPLICATE_ROLE_GRANT: 409,
@@ -63,11 +57,8 @@ export const errorMessageByCode = {
   ORIGIN_NOT_ALLOWED: "The request origin is not allowed.",
   JSON_CONTENT_TYPE_REQUIRED: "A JSON request body is required.",
   RESOURCE_NOT_FOUND: "The requested resource was not found.",
-<<<<<<< Updated upstream
-=======
   DUPLICATE_CODE: "That organization code is already in use.",
   DUPLICATE_IDENTITY: "That employee identity is already in use.",
->>>>>>> Stashed changes
   DUPLICATE_USERNAME: "That username is already in use.",
   EMPLOYEE_ACCOUNT_ALREADY_EXISTS: "That employee already has an account.",
   DUPLICATE_ROLE_GRANT: "That role grant already exists.",

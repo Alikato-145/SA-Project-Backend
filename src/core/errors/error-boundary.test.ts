@@ -79,4 +79,22 @@ describe("public error boundary", () => {
     expect(JSON.stringify(result)).not.toContain("secret-hash");
     expect(result.body.error.code).toBe("STATE_CONFLICT");
   });
+
+  test("maps duplicate organization codes to a stable conflict", () => {
+    expect(
+      toPublicErrorResult(
+        new ApplicationError("DUPLICATE_CODE"),
+        "request-duplicate-code",
+      ),
+    ).toEqual({
+      status: 409,
+      body: {
+        error: {
+          code: "DUPLICATE_CODE",
+          message: "That organization code is already in use.",
+        },
+        request_id: "request-duplicate-code",
+      },
+    });
+  });
 });
