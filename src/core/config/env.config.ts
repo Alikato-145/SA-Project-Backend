@@ -55,6 +55,8 @@ const envSchema = z.object({
   AUTH_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(8 * 60 * 60),
   AUTH_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(5),
   AUTH_LOCK_DURATION_SECONDS: z.coerce.number().int().positive().default(15 * 60),
+  EMPLOYEE_BANK_ENCRYPTION_KEY_VERSION: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/),
+  EMPLOYEE_BANK_ENCRYPTION_KEYS: z.string().min(1),
   DATABASE_URL: z
     .string()
     .url()

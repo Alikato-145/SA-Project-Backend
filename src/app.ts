@@ -3,6 +3,7 @@ import { authConfig } from "./core/config/auth.config";
 import { createRequestAuthenticator } from "./core/auth/request-authenticator";
 import { createSessionJwtCodec } from "./core/auth/session-jwt-codec";
 import { createSessionTokenService } from "./core/auth/session-token";
+import { env } from "./core/config/env.config";
 import { ActionObserver } from "./core/audit/action-observer";
 import { DomainAuditObserver } from "./core/audit/domain-audit-observer";
 import { db } from "./core/db/client";
@@ -13,9 +14,24 @@ import { createAuditService } from "./features/audit/audit.service";
 import { createBranchService } from "./features/branch/branch.service";
 import { branchRepository } from "./features/branch/branch.repository";
 import { createDepartmentService } from "./features/department/department.service";
+import { createA3EmployeeRoutes, type A3EmployeeRoutesOptions } from "./features/employee/employee.routes";
+import { createEmployeeService } from "./features/employee/employee.service";
+import { createEmployeeBankAccountService } from "./features/employee-bank-account/employee-bank-account.service";
+import { bankAccountRepository } from "./features/employee-bank-account/employee-bank-account.repository";
+import { bankKeyringFromEnv, createBankAccountCipher } from "./features/employee-bank-account/employee-bank-account.crypto";
+import { createEmployeeWeeklyHolidayService } from "./features/employee-weekly-holiday/employee-weekly-holiday.service";
+import { holidayRepository } from "./features/employee-weekly-holiday/employee-weekly-holiday.repository";
+import { createEmploymentAssignmentService } from "./features/employment-assignment/employment-assignment.service";
+import { employmentAssignmentRepository } from "./features/employment-assignment/employment-assignment.repository";
 import { departmentRepository } from "./features/department/department.repository";
 import { createOrganizationRoutes, type OrganizationRoutesOptions } from "./features/organization/organization.routes";
+import { assignmentOrganizationPathRepository } from "./features/organization/organization.assignment.repository";
+import { createAssignmentOrganizationValidationService } from "./features/organization/organization.validation";
 import { createPayrollRoutes, type PayrollRoutesOptions } from "./features/payroll/payroll.routes";
+import { createPayslipRoutes } from "./features/payslip/payslip.routes";
+import { createPayslipService } from "./features/payslip/payslip.service";
+import { createReportRoutes } from "./features/reports/report.routes";
+import { createReportService } from "./features/reports/report.service";
 import { DrizzlePayrollInputProvider, DrizzlePayrollRepository } from "./features/payroll/payroll.repository";
 import { createPayrollService } from "./features/payroll/payroll.service";
 import { createPositionService } from "./features/position/position.service";
@@ -121,13 +137,16 @@ const concreteOrganizationOptions = (): OrganizationRoutesOptions => {
   };
 };
 
-const concreteUserAccountAdminOptions = (): UserAccountAdminRoutesOptions => ({
-  service: createUserAccountAdminService({
+const createConcreteUserAccountAdminService = () =>
+  createUserAccountAdminService({
     repository: userAccountAdminRepository,
     rootExecutor: db,
     transactionRunner,
     audit: createAuditService(db, auditRepository),
-  }),
+  });
+
+const concreteUserAccountAdminOptions = (): UserAccountAdminRoutesOptions => ({
+  service: createConcreteUserAccountAdminService(),
   authenticate: createAuthenticator(),
   allowedOrigins: authConfig.allowedOrigins,
 });
@@ -143,12 +162,71 @@ const concreteRoleOptions = (): RoleRoutesOptions => ({
   allowedOrigins: authConfig.allowedOrigins,
 });
 
+const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
+  const audit = createAuditService(db, auditRepository);
+  const assignmentService = createEmploymentAssignmentService({
+    repository: employmentAssignmentRepository,
+    rootExecutor: db,
+    transactionRunner,
+    organization: createAssignmentOrganizationValidationService(assignmentOrganizationPathRepository),
+    actions: audit.actions,
+    domain: audit.domain,
+  });
+  const bankAccountService = createEmployeeBankAccountService({
+    repository: bankAccountRepository,
+    rootExecutor: db,
+    transactionRunner,
+    actions: audit.actions,
+    domain: audit.domain,
+    cipher: createBankAccountCipher(bankKeyringFromEnv(process.env)),
+  });
+  const weeklyHolidayService = createEmployeeWeeklyHolidayService({
+    repository: holidayRepository,
+    rootExecutor: db,
+    transactionRunner,
+    actions: audit.actions,
+    domain: audit.domain,
+  });
+  const accountService = createConcreteUserAccountAdminService();
+  return {
+    service: createEmployeeService({
+      rootExecutor: db,
+      transactionRunner,
+      actions: audit.actions,
+      domain: audit.domain,
+      onboarding: {
+        assignment: assignmentService,
+        bank: bankAccountService,
+        holiday: weeklyHolidayService,
+        account: accountService,
+      },
+    }),
+    actions: audit.actions,
+    assignmentService,
+    bankAccountService,
+    weeklyHolidayService,
+    authenticate: createAuthenticator(),
+    allowedOrigins: authConfig.allowedOrigins,
+  };
+};
+
+const concretePayslipService = () => {
+  const audit = createAuditService(db, auditRepository);
+  return createPayslipService({ rootExecutor: db, transactionRunner, actions: audit.actions, domain: audit.domain });
+};
+
+const concreteReportService = () => {
+  const audit = createAuditService(db, auditRepository);
+  return createReportService({ rootExecutor: db, actions: audit.actions, cipher: createBankAccountCipher(bankKeyringFromEnv(process.env)) });
+};
+
 export const createApp = (
   payrollOptions: PayrollRoutesOptions = concretePayrollOptions(),
   userAccountOptions: UserAccountRoutesOptions = concreteUserAccountOptions(),
   organizationOptions: OrganizationRoutesOptions = concreteOrganizationOptions(),
   userAccountAdminOptions: UserAccountAdminRoutesOptions = concreteUserAccountAdminOptions(),
   roleOptions: RoleRoutesOptions = concreteRoleOptions(),
+  employeeOptions: A3EmployeeRoutesOptions = concreteEmployeeOptions(),
 ) =>
   new Elysia({ name: "haris-payroll" })
     .get("/", () => success({ service: "haris-payroll", status: "ok" }))
@@ -156,7 +234,10 @@ export const createApp = (
     .use(createOrganizationRoutes(organizationOptions))
     .use(createUserAccountAdminRoutes(userAccountAdminOptions))
     .use(createRoleRoutes(roleOptions))
-    .use(createPayrollRoutes(payrollOptions));
+    .use(createA3EmployeeRoutes(employeeOptions))
+    .use(createPayrollRoutes(payrollOptions))
+    .use(createPayslipRoutes({ service: concretePayslipService(), authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
+    .use(createReportRoutes({ service: concreteReportService(), authenticate: createAuthenticator() }));
 
 // Person C owns this composition root. Feature owners export route plugins;
 // registrations are added here without moving feature logic into app.ts.
