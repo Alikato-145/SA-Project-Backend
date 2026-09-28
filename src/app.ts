@@ -32,6 +32,7 @@ import { createPayslipRoutes } from "./features/payslip/payslip.routes";
 import { createPayslipService } from "./features/payslip/payslip.service";
 import { createReportRoutes } from "./features/reports/report.routes";
 import { createReportService } from "./features/reports/report.service";
+import { createOperationsRoutes } from "./features/operations-integration/operations-integration.routes";
 import { DrizzlePayrollInputProvider, DrizzlePayrollRepository } from "./features/payroll/payroll.repository";
 import { createPayrollService } from "./features/payroll/payroll.service";
 import { createPositionService } from "./features/position/position.service";
@@ -235,6 +236,7 @@ export const createApp = (
     .use(createUserAccountAdminRoutes(userAccountAdminOptions))
     .use(createRoleRoutes(roleOptions))
     .use(createA3EmployeeRoutes(employeeOptions))
+    .use(createOperationsRoutes({ authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
     .use(createPayrollRoutes(payrollOptions))
     .use(createPayslipRoutes({ service: concretePayslipService(), authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
     .use(createReportRoutes({ service: concreteReportService(), authenticate: createAuthenticator() }));

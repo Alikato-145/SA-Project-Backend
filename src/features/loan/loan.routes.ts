@@ -2,12 +2,12 @@ import Elysia, { t } from "elysia";
 import type { LoanActor } from "./loan.dto";
 import { LoanController } from "./loan.controller";
 export const createLoanRoutes = (controller: LoanController,
-  actorFromContext: (context: unknown) => LoanActor) =>
+  actorFromContext: (context: unknown) => LoanActor | Promise<LoanActor>) =>
   new Elysia({ name: "loan" })
-    .get("/loans", (context) =>
-      controller.list(actorFromContext(context), context.query.employee_id),
+    .get("/loans", async (context) =>
+      controller.list(await actorFromContext(context), context.query.employee_id),
       { query: t.Object({ employee_id: t.Numeric({ minimum: 1 }) }) })
-    .post("/loans", (context) => controller.create(actorFromContext(context), context.body),
+    .post("/loans", async (context) => controller.create(await actorFromContext(context), context.body),
       { body: t.Object({
         employee_id: t.Number({ minimum: 1 }),
         principal_amount: t.String({ pattern: "^\\d+(?:\\.\\d{1,2})?$" }),
