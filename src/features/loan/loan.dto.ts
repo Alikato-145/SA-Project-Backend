@@ -1,4 +1,5 @@
-export type LoanActor = { accountId: number };
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type LoanActor = OperationActor & { accountId: number };
 export type CreateLoanCommand = {
   employeeId: number; principalAmount: string; installmentCount: number;
   firstDueMonth: string; reason: string;

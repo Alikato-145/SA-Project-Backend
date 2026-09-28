@@ -1,5 +1,6 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { db } from "../../core/db/client";
+import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import {
   leaveApprovalActions,
   leaveQuotas,
@@ -9,7 +10,7 @@ import {
 } from "./leave.schema";
 import type { LeaveDay, LeaveQuota, LeaveRequest, LeaveType, SubmitLeaveCommand } from "./leave.dto";
 
-export class LeaveError extends Error {
+export class LeaveError extends ApplicationError {
   constructor(public readonly code:
     | "INVALID_LEAVE" | "LEAVE_DATE_OVERLAP" | "LEAVE_TYPE_UNAVAILABLE"
     | "LEAVE_QUOTA_EXCEEDED" | "LEAVE_QUOTA_FROZEN" | "LEAVE_NOT_FOUND"
@@ -50,9 +51,14 @@ const pgCode = (error: unknown): string | undefined => {
 };
 
 export class DrizzleLeaveRepository implements LeaveRepository {
+ async listTypes() { return operationExecutor().query.leaveTypes.findMany({where:eq(leaveTypes.isActive,true)}); }
+ async listQuotas(employeeId:number,year:number) { return operationExecutor().query.leaveQuotas.findMany({where:and(eq(leaveQuotas.employeeId,employeeId),eq(leaveQuotas.quotaYear,year))}); }
+ async findById(id:number) { return operationExecutor().query.leaveRequests.findFirst({where:eq(leaveRequests.id,id)}); }
+ async history(id:number) { return operationExecutor().query.leaveApprovalActions.findMany({where:eq(leaveApprovalActions.leaveRequestId,id),orderBy:[leaveApprovalActions.actedAt,leaveApprovalActions.id]}); }
+
   async withTransaction<T>(work: (session: LeaveSession) => Promise<T>): Promise<T> {
     try {
-      return await db.transaction(async (tx) => {
+      return await operationTransaction(async (tx) => {
         const session: LeaveSession = {
           transaction: tx,
           lockEmployee: async (employeeId) => {
@@ -134,11 +140,11 @@ export class DrizzleLeaveRepository implements LeaveRepository {
   }
 
   async listByEmployee(employeeId: number): Promise<LeaveRequest[]> {
-    return db.query.leaveRequests.findMany({ where: eq(leaveRequests.employeeId, employeeId) });
+    return operationExecutor().query.leaveRequests.findMany({ where: eq(leaveRequests.employeeId, employeeId) });
   }
 
   async findApprovedDays(employeeId: number, startDate: string, endDate: string): Promise<LeaveDay[]> {
-    return db.select({
+    return operationExecutor().select({
       id: leaveRequestDays.id, leaveRequestId: leaveRequestDays.leaveRequestId,
       workDayRecordId: leaveRequestDays.workDayRecordId, leaveTypeId: leaveRequestDays.leaveTypeId,
       leaveDate: leaveRequestDays.leaveDate, dayAmount: leaveRequestDays.dayAmount,

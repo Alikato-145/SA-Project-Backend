@@ -1,5 +1,6 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { and, eq } from "drizzle-orm";
-import { db } from "../../core/db/client";
+import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import type {
   CreateHolidayCommand,
   HolidayCalendar,
@@ -14,7 +15,7 @@ export type HolidayCalendarRepository = {
   update(id: number, command: UpdateHolidayCommand): Promise<HolidayCalendar | undefined>;
 };
 
-export class HolidayCalendarError extends Error {
+export class HolidayCalendarError extends ApplicationError {
   constructor(public readonly code: "HOLIDAY_ALREADY_EXISTS" | "HOLIDAY_NOT_FOUND" | "OUT_OF_SCOPE" | "INVALID_HOLIDAY") {
     super(code);
     this.name = "HolidayCalendarError";
@@ -30,7 +31,7 @@ const databaseCode = (error: unknown) => {
 export class DrizzleHolidayCalendarRepository implements HolidayCalendarRepository {
   async insert(command: CreateHolidayCommand & { createdByUserAccountId: number }): Promise<HolidayCalendar> {
     try {
-      const [holiday] = await db.insert(holidayCalendars).values(command).returning();
+      const [holiday] = await operationExecutor().insert(holidayCalendars).values(command).returning();
       return holiday;
     } catch (error) {
       if (databaseCode(error) === "23505") throw new HolidayCalendarError("HOLIDAY_ALREADY_EXISTS");
@@ -39,18 +40,18 @@ export class DrizzleHolidayCalendarRepository implements HolidayCalendarReposito
   }
 
   async findById(id: number): Promise<HolidayCalendar | undefined> {
-    return db.query.holidayCalendars.findFirst({ where: eq(holidayCalendars.id, id) });
+    return operationExecutor().query.holidayCalendars.findFirst({ where: eq(holidayCalendars.id, id) });
   }
 
   async list(shopId: number, options: { holidayDate?: string; activeOnly?: boolean }): Promise<HolidayCalendar[]> {
     const filters = [eq(holidayCalendars.shopId, shopId)];
     if (options.holidayDate) filters.push(eq(holidayCalendars.holidayDate, options.holidayDate));
     if (options.activeOnly) filters.push(eq(holidayCalendars.isActive, true));
-    return db.query.holidayCalendars.findMany({ where: and(...filters) });
+    return operationExecutor().query.holidayCalendars.findMany({ where: and(...filters) });
   }
 
   async update(id: number, command: UpdateHolidayCommand): Promise<HolidayCalendar | undefined> {
-    const [holiday] = await db
+    const [holiday] = await operationExecutor()
       .update(holidayCalendars)
       .set({ ...command, updatedAt: new Date() })
       .where(eq(holidayCalendars.id, id))

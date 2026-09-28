@@ -7,7 +7,7 @@ export type OvertimeAccess = {
   assertCanRead(actor: OvertimeActor, employeeId: number): Promise<void>;
 };
 export type OvertimeContext = {
-  assertEligible(command: SubmitOvertimeCommand): Promise<void>;
+  assertEligible(command: SubmitOvertimeCommand,actor?:OvertimeActor): Promise<void>;
 };
 export type OvertimePayrollLock = {
   assertDateUnlocked(transaction: unknown, employeeId: number, date: string): Promise<void>;
@@ -18,7 +18,7 @@ const validDate = (value: string) => {
       date.toISOString().slice(0, 10) !== value) throw new OvertimeError("INVALID_OVERTIME_DATE");
 };
 const amount = (value: string | null | undefined) =>
-  typeof value === "string" && /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value) && Number(value) > 0;
+  typeof value === "string" && /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(value) && Number(value) > 0 && Number(value) <= 999999.99;
 export const assertOvertimeValue = (command: SubmitOvertimeCommand) => {
   if (command.overtimeType === "hourly") {
     if (!amount(command.hours) || command.dayUnits != null) throw new OvertimeError("INVALID_OVERTIME_AMOUNT");
@@ -41,7 +41,7 @@ export class OvertimeService {
     validDate(command.overtimeDate);
     assertOvertimeValue(command);
     await this.access.assertCanSubmit(actor, command.employeeId, command.overtimeDate);
-    await this.context.assertEligible(command);
+    await this.context.assertEligible(command,actor);
     return this.repository.withTransaction(async (session) => {
       await this.payrollLock.assertDateUnlocked(session.transaction, command.employeeId, command.overtimeDate);
       const record = await session.insert(command, actor.accountId);
@@ -74,6 +74,7 @@ export class OvertimeService {
       if (actor.scope === "self") throw new OvertimeError("OUT_OF_SCOPE");
       if (record.status !== "pending") throw new OvertimeError("OVERTIME_NOT_PENDING");
       await this.payrollLock.assertDateUnlocked(session.transaction, record.employeeId, record.overtimeDate);
+      if(decision === "approved")await this.context.assertEligible(record,actor);
       const decided = await session.decide(id, decision);
       await session.appendAction(id, actor.accountId, decision, remark);
       return decided;

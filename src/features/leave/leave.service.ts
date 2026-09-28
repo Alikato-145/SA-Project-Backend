@@ -13,7 +13,7 @@ export type LeavePayrollLock = {
   assertDatesUnlocked(transaction: unknown, employeeId: number, dates: string[]): Promise<void>;
 };
 
-const datesInclusive = (start: string, end: string): string[] => {
+export const datesInclusive = (start: string, end: string): string[] => {
   const pattern = /^\d{4}-\d{2}-\d{2}$/;
   if (!pattern.test(start) || !pattern.test(end) || end < start) throw new LeaveError("INVALID_LEAVE");
   const first = new Date(`${start}T00:00:00Z`);

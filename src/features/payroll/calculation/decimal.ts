@@ -8,11 +8,11 @@ const power10 = (scale: number) => {
 
 export const parseFixed = (value: string, scale: number): bigint => {
   const match = decimalPattern.exec(value);
-  if (!match || match[2].length + (match[3]?.length ?? 0) > maxDigits || (match[3]?.length ?? 0) > scale) {
+  if (!match || match[2].length + (match[3]?.length ?? 0) > maxDigits || /[1-9]/.test((match[3] ?? "").slice(scale))) {
     throw new RangeError("Invalid decimal value");
   }
   const factor = power10(scale);
-  const fraction = (match[3] ?? "").padEnd(scale, "0");
+  const fraction = (match[3] ?? "").slice(0, scale).padEnd(scale, "0");
   const parsed = BigInt(match[2]) * factor + BigInt(fraction || "0");
   return match[1] === "-" ? -parsed : parsed;
 };

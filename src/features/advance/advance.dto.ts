@@ -1,4 +1,5 @@
-export type AdvanceActor = { accountId: number };
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type AdvanceActor = OperationActor & { accountId: number };
 export type AdvanceRecord = {
   id: number; employeeId: number; requestMonth: string; amount: string;
   status: "pending" | "approved" | "rejected" | "deducted" | "cancelled";

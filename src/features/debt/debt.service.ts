@@ -51,7 +51,9 @@ export class DebtService {
     const entries = await this.repository.listByEmployee(employeeId);
     const balance = entries.reduce((sum, row) => sum +
       (row.transactionKind === "reversal" ? -cents(row.amount) : cents(row.amount)), 0n);
-    return { entries, balance: money(balance) };
+    const reversed=new Set(entries.filter(row=>row.transactionKind==="reversal").map(row=>row.originalTransactionId));
+    const outstanding=entries.filter(row=>row.transactionKind!=="reversal"&&!reversed.has(row.id)&&!row.settledAt&&!row.settledInPayrollRecordId).reduce((sum,row)=>sum+cents(row.amount),0n);
+    return { entries, balance: money(balance), outstandingBalance:money(outstanding) };
   }
   async findCandidatesForPayroll(actor: DebtActor, employeeId: number, periodEnd: string): Promise<DebtTransaction[]> {
     await this.access.assertCanRead(actor, employeeId);

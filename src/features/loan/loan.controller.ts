@@ -1,19 +1,11 @@
-import type { LoanActor } from "./loan.dto";
 import { toLoanResponse } from "./loan.mapper";
-import { LoanService } from "./loan.service";
+import type { LoanService } from "./loan.service";
+import { operationCommand, operationSuccess, publicOperationData } from "../../shared/operation-mapper";
+import { databaseId } from "../../shared/operation-validation";
 export class LoanController {
-  constructor(private readonly service: LoanService) {}
-  async create(actor: LoanActor, body: {
-    employee_id: number; principal_amount: string; installment_count: number;
-    first_due_month: string; reason: string;
-  }) {
-    return toLoanResponse(await this.service.createLoan(actor, {
-      employeeId: body.employee_id, principalAmount: body.principal_amount,
-      installmentCount: body.installment_count, firstDueMonth: body.first_due_month,
-      reason: body.reason,
-    }));
-  }
-  async list(actor: LoanActor, employeeId: number) {
-    return (await this.service.listLoans(actor, employeeId)).map(toLoanResponse);
-  }
+ constructor(private readonly service: Pick<LoanService,keyof LoanService>) {}
+ private response(actor:any,value:any) { return operationSuccess(publicOperationData(value),actor.requestId); }
+
+ async create(actor:any,body:any) { return this.response(actor,toLoanResponse(await this.service.createLoan(actor,operationCommand(body)))); }
+ async list(actor:any,employeeId:string) { return this.response(actor,(await this.service.listLoans(actor,databaseId(employeeId))).map(toLoanResponse)); }
 }

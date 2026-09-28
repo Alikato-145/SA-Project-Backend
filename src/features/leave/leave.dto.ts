@@ -1,4 +1,5 @@
-export type LeaveActor = {
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type LeaveActor = OperationActor & {
   accountId: number;
   scope: "self" | "department" | "branch" | "all";
 };
