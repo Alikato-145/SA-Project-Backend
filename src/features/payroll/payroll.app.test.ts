@@ -103,6 +103,7 @@ describe("payroll app composition", () => {
       "GET /api/v1/accounts/",
       "GET /api/v1/roles",
       "POST /api/v1/accounts/:accountId/roles",
+      "GET /api/v1/audit-logs/",
     ]));
   });
 });

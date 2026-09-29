@@ -39,6 +39,7 @@ import { db } from "./core/db/client";
 import { withTransaction, type TransactionRunner } from "./core/db/transaction";
 import { success } from "./shared/http/response";
 import { auditRepository } from "./features/audit/audit.repository";
+import { createAuditRoutes } from "./features/audit/audit.routes";
 import { createAuditService } from "./features/audit/audit.service";
 import { createBranchService } from "./features/branch/branch.service";
 import { branchRepository } from "./features/branch/branch.repository";
@@ -278,6 +279,7 @@ export const createApp = (
     .use(createOrganizationRoutes(organizationOptions))
     .use(createUserAccountAdminRoutes(userAccountAdminOptions))
     .use(createRoleRoutes(roleOptions))
+    .use(createAuditRoutes({ service: createAuditService(db, auditRepository), authenticate: createAuthenticator() }))
     .use(createA3EmployeeRoutes(employeeOptions))
     .use(createPayrollRoutes(payrollOptions))
     .use(createPayslipRoutes({ service: concretePayslipService(), authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
