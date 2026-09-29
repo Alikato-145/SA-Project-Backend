@@ -3,7 +3,7 @@ import { divideHalfUp, formatMoney, money, multiplyFixed, quantity, rate } from 
 
 const sourceTables = new Set([
   "work_day_records", "overtime_records", "advance_requests", "loan_installments",
-  "debt_transactions", "payroll_adjustments", "employment_assignments",
+  "debt_transactions", "payroll_adjustments", "employment_assignments", "leave_request_days",
 ]);
 
 const fixedRateAmount = (baseCents: bigint, multiplier: string) =>
@@ -30,6 +30,10 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
   }));
 
   for (const day of input.workDays) {
+    items.push(line({ itemType: "other", direction: "earning",
+      description: `Attendance ${day.status}; late_minutes=${day.lateMinutes}; deductible=${day.deductible}`,
+      quantity: null, rate: null, amount: "0.00", payrollConfigurationId: null,
+      sourceTable: "work_day_records", sourceId: day.id, occurredOn: day.date }));
     const base = dailyBase(day.baseSalary ?? input.baseSalary, day.standardWorkDays ?? input.standardWorkDays);
     const welfare = dailyBase(day.welfare ?? input.welfare, day.standardWorkDays ?? input.standardWorkDays);
     const dayAssignmentId = day.assignmentId ?? input.assignmentId;
@@ -41,19 +45,25 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
       quantity: "1.00", rate: formatMoney(welfare), amount: formatMoney(welfare),
       payrollConfigurationId: day.standardWorkDaysConfigurationId ?? null,
       sourceTable: "employment_assignments", sourceId: dayAssignmentId, occurredOn: day.date }));
-    if ((day.status === "absent" || (day.status === "leave" && day.deductible)) && day.deductible) {
-      items.push(line({ itemType: day.status === "leave" ? "sick_unpaid" : "absence", direction: "deduction",
-        description: day.status === "leave" ? "Unpaid leave" : "Absence", quantity: "1.00",
+    if (day.status === "absent" && day.deductible) {
+      items.push(line({ itemType: "absence", direction: "deduction",
+        description: "Absence", quantity: "1.00",
         rate: formatMoney(base), amount: formatMoney(fixedRateAmount(base, day.absenceRate ?? input.absenceRate)),
         payrollConfigurationId: day.absenceConfigurationId ?? null, sourceTable: "work_day_records", sourceId: day.id, occurredOn: day.date }));
     }
-    if (day.lateMinutes > 0 && day.deductible) {
+    if (day.status !== "leave" && day.lateMinutes > 0 && day.deductible) {
       const amount = multiplyFixed(BigInt(day.lateMinutes), 0, rate(day.lateRate ?? input.lateRate), 4, 2);
       items.push(line({ itemType: "lateness", direction: "deduction", description: "Lateness",
         quantity: `${day.lateMinutes}.00`, rate: day.lateRate ?? input.lateRate, amount: formatMoney(amount),
         payrollConfigurationId: day.lateConfigurationId ?? null, sourceTable: "work_day_records", sourceId: day.id, occurredOn: day.date }));
     }
   }
+
+  for (const day of input.approvedLeaveEvidence ?? []) items.push(line({
+    itemType: "other", direction: "earning", amount: "0.00", quantity: null, rate: null,
+    description: `Approved leave request=${day.requestId}; original_type=${day.originalTypeId}; approved_type=${day.approvedTypeId}; paid=${day.paid}; deductible=${day.deductible}; quota_consumed=${day.quotaConsumed}`,
+    payrollConfigurationId: null, sourceTable: "leave_request_days", sourceId: day.id, occurredOn: day.date,
+  }));
 
   for (const overtime of input.overtime) {
     const base = dailyBase(overtime.baseSalary ?? input.baseSalary, overtime.standardWorkDays ?? input.standardWorkDays);

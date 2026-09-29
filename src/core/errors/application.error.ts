@@ -9,6 +9,7 @@ export type FieldErrors = Readonly<Record<string, readonly string[]>>;
 export interface ApplicationErrorOptions {
   cause?: unknown;
   fieldErrors?: FieldErrors;
+  publicMessage?: string;
   retryAt?: string;
 }
 
@@ -19,7 +20,7 @@ export class ApplicationError extends Error {
   readonly retryAt?: string;
 
   constructor(code: ErrorCode, options: ApplicationErrorOptions = {}) {
-    super(errorMessageByCode[code], { cause: options.cause });
+    super(options.publicMessage ?? errorMessageByCode[code], { cause: options.cause });
     this.name = "ApplicationError";
     this.code = code;
     this.status = errorStatusByCode[code];

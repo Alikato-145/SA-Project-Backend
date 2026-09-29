@@ -1,55 +1,19 @@
-import Elysia from "elysia";
-import type {
-  CreateBranchScheduleCommand,
-  ScheduleActor,
-  UpdateBranchScheduleCommand,
-  UpsertScheduleOverrideCommand,
-} from "./branch-schedule.dto";
+import { t } from "elysia";
+import { operationTransport, type OperationTransportOptions } from "../../core/middleware/operation-transport";
+import { operationId as id, operationDate as date, operationMoney as money } from "../../shared/operation-validation";
+const object=(fields:any)=>t.Object(fields,{additionalProperties:false});
+const params=object({id});
+const employeeQuery=object({employee_id:id});
+const text=t.Optional(t.String({maxLength:1000}));
+const nullableText=t.Optional(t.Union([t.String({maxLength:1000}),t.Null()]));
 import { BranchScheduleController } from "./branch-schedule.controller";
 
-export type BranchScheduleRouteDependencies = {
-  controller: BranchScheduleController;
-  actorFromContext(context: unknown): ScheduleActor;
-};
+const time=t.String({pattern:"^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$"});
+const fields={work_start_time:time,standard_close_time:time,late_grace_minutes:t.Integer({minimum:0}),effective_from:date,effective_to:t.Optional(t.Union([date,t.Null()]))};
+export const createBranchScheduleRoutes=(options:OperationTransportOptions & {controller:BranchScheduleController})=> operationTransport("b5-branch-schedule",options)
 
-/**
- * Person C composes this plugin below `/api` after supplying authenticated actor
- * context and the shared error boundary. It deliberately has no app-level import.
- */
-export const createBranchScheduleRoutes = (dependencies: BranchScheduleRouteDependencies) =>
-  new Elysia({ name: "branch-schedule" })
-    .get("/branch-schedules/applicable", (context) =>
-      dependencies.controller.findApplicable({
-        actor: dependencies.actorFromContext(context),
-        branchId: (context.query as { branchId: string }).branchId,
-        workDate: (context.query as { workDate: string }).workDate,
-      }),
-    )
-    .get("/branch-schedules", (context) =>
-      dependencies.controller.list({
-        actor: dependencies.actorFromContext(context),
-        branchId: (context.query as { branchId: string }).branchId,
-        workDate: (context.query as { workDate?: string }).workDate,
-      }),
-    )
-    .post("/branch-schedules", (context) =>
-      dependencies.controller.create({
-        actor: dependencies.actorFromContext(context),
-        command: context.body as CreateBranchScheduleCommand,
-      }),
-    )
-    .patch("/branch-schedules/:id", (context) =>
-      dependencies.controller.update({
-        actor: dependencies.actorFromContext(context),
-        id: (context.params as { id: string }).id,
-        command: context.body as UpdateBranchScheduleCommand,
-      }),
-    )
-    .put("/branch-schedules/:branchId/overrides/:date", (context) =>
-      dependencies.controller.upsertOverride({
-        actor: dependencies.actorFromContext(context),
-        branchId: (context.params as { branchId: string }).branchId,
-        scheduleDate: (context.params as { date: string }).date,
-        command: context.body as Omit<UpsertScheduleOverrideCommand, "branchId" | "scheduleDate">,
-      }),
-    );
+ .get("/branch-schedules/applicable",({actor,query})=>options.controller.findApplicable({actor,branchId:query.branch_id,workDate:query.work_date}),{query:object({branch_id:id,work_date:date})})
+ .get("/branch-schedules",({actor,query})=>options.controller.list({actor,branchId:query.branch_id,workDate:query.work_date}),{query:object({branch_id:id,work_date:t.Optional(date)})})
+ .post("/branch-schedules",({actor,body})=>options.controller.create({actor,command:body}),{body:object({branch_id:id,...fields})})
+ .patch("/branch-schedules/:id",({actor,params,body})=>options.controller.update({actor,id:params.id,command:body}),{params,body:object({...Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,t.Optional(value)])),effective_from:date})})
+ .put("/branch-schedules/:branch_id/overrides/:date",({actor,params,body})=>options.controller.upsertOverride({actor,branchId:params.branch_id,scheduleDate:params.date,command:body}),{params:object({branch_id:id,date}),body:object({is_closed:t.Boolean(),work_start_time:t.Optional(t.Union([time,t.Null()])),close_time:t.Optional(t.Union([time,t.Null()])),reason:nullableText})});

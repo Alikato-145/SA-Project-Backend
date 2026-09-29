@@ -1,23 +1,11 @@
-import type { DebtActor } from "./debt.dto";
-import { toDebtResponse } from "./debt.mapper";
-import { DebtService } from "./debt.service";
+import type { DebtService } from "./debt.service";
+import { operationCommand, operationSuccess, publicOperationData } from "../../shared/operation-mapper";
+import { databaseId } from "../../shared/operation-validation";
 export class DebtController {
-  constructor(private readonly service: DebtService) {}
-  async record(actor: DebtActor, body: {
-    employee_id: number; debt_type_id: number; transaction_kind: "charge" | "adjustment";
-    amount: string; description: string;
-  }) {
-    return toDebtResponse(await this.service.record(actor, {
-      employeeId: body.employee_id, debtTypeId: body.debt_type_id,
-      transactionKind: body.transaction_kind, amount: body.amount,
-      description: body.description,
-    }));
-  }
-  async reverse(actor: DebtActor, id: number, body: { description: string }) {
-    return toDebtResponse(await this.service.reverse(actor, id, body.description));
-  }
-  async list(actor: DebtActor, employeeId: number) {
-    const ledger = await this.service.getLedger(actor, employeeId);
-    return { entries: ledger.entries.map(toDebtResponse), balance: ledger.balance };
-  }
+ constructor(private readonly service: Pick<DebtService,keyof DebtService>) {}
+ private response(actor:any,value:any) { return operationSuccess(publicOperationData(value),actor.requestId); }
+
+ async record(actor:any,body:any) { return this.response(actor,await this.service.record(actor,operationCommand(body))); }
+ async reverse(actor:any,id:string,body:any) { return this.response(actor,await this.service.reverse(actor,databaseId(id),body.description)); }
+ async list(actor:any,employeeId:string) { return this.response(actor,await this.service.getLedger(actor,databaseId(employeeId))); }
 }

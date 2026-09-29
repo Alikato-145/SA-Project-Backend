@@ -6,7 +6,7 @@ import { LeaveService, type LeaveAccess } from "./leave.service";
 const employee: LeaveActor = { accountId: 1, scope: "self" };
 const supervisor: LeaveActor = { accountId: 2, scope: "department" };
 const manager: LeaveActor = { accountId: 3, scope: "branch" };
-const type: LeaveType = { id: 7, quotaType: "fixed", isDeductible: false, allowExceed: false, isActive: true };
+const type: LeaveType = { id: 7, nameTh: "ลากิจ", quotaType: "fixed", isDeductible: false, requiresDocument: false, allowExceed: false, isActive: true };
 const request: LeaveRequest = {
   id: 20, employeeId: 11, originalLeaveTypeId: 7, finalLeaveTypeId: null,
   startDate: "2026-09-01", endDate: "2026-09-03", requestedDays: "3",
@@ -28,6 +28,16 @@ const make = (overrides: Partial<LeaveSession> = {}) => {
     async insertRequest(_command, requestedDays) { calls.push("insert"); return { ...request, requestedDays: String(requestedDays) }; },
     async insertDays() { calls.push("days"); },
     async findRequest() { return current; },
+    async updatePendingRequest(_id, command, requestedDays) {
+      calls.push("update");
+      current = {
+        ...current, originalLeaveTypeId: command.leaveTypeId, startDate: command.startDate,
+        endDate: command.endDate, requestedDays: String(requestedDays), reason: command.reason ?? null,
+        isRetroactive: command.isRetroactive ?? false,
+      };
+      return current;
+    },
+    async replaceDays() { calls.push("replace-days"); },
     async findDays() { return [day("2026-09-01", 1), day("2026-09-02", 2), day("2026-09-03", 3)]; },
     async findQuota() { return { id: 4, employeeId: 11, leaveTypeId: 7, quotaYear: 2026, entitledDays: "3", usedDays: "0", frozenAt: null }; },
     async updateQuota() { calls.push("quota"); },
@@ -38,6 +48,7 @@ const make = (overrides: Partial<LeaveSession> = {}) => {
   };
   const repository: LeaveRepository = {
     async withTransaction(work) { return work(session); },
+    async listActiveTypes() { return [type]; },
     async listByEmployee() { return [current]; },
     async findApprovedDays() { return []; },
   };
@@ -53,6 +64,9 @@ const make = (overrides: Partial<LeaveSession> = {}) => {
 };
 
 describe("leave decisions", () => {
+  test("lists active leave types for the picker", async () => {
+    await expect(make().service.listLeaveTypes(employee)).resolves.toEqual([type]);
+  });
   test("submits inclusive dates and blocks pending overlaps", async () => {
     const fixture = make();
     const command = { employeeId: 11, leaveTypeId: 7, startDate: "2026-09-01", endDate: "2026-09-03" };
@@ -60,6 +74,32 @@ describe("leave decisions", () => {
     expect(fixture.calls).toEqual(["lock", "insert", "days", "submitted"]);
     fixture.session.findOverlap = async () => true;
     await expect(fixture.service.submitLeave(employee, command)).rejects.toMatchObject({ code: "LEAVE_DATE_OVERLAP" });
+  });
+
+  test("updates a pending request, replaces its days, and records the correction", async () => {
+    const fixture = make();
+    const result = await fixture.service.updateLeave(employee, 20, {
+      leaveTypeId: 7, startDate: "2026-09-04", endDate: "2026-09-05", reason: "เปลี่ยนวันลา",
+    });
+    expect(result).toMatchObject({ startDate: "2026-09-04", endDate: "2026-09-05", requestedDays: "2", reason: "เปลี่ยนวันลา" });
+    expect(fixture.calls).toEqual(["lock", "update", "replace-days", "overridden"]);
+  });
+
+  test("does not update a leave request after it has been decided", async () => {
+    const fixture = make({ findRequest: async () => ({ ...request, status: "approved" }) });
+    await expect(fixture.service.updateLeave(employee, 20, {
+      leaveTypeId: 7, startDate: "2026-09-04", endDate: "2026-09-05",
+    })).rejects.toMatchObject({ code: "LEAVE_ALREADY_DECIDED" });
+    expect(fixture.calls).toEqual([]);
+  });
+
+  test("checks submit scope before updating a pending request", async () => {
+    const fixture = make();
+    fixture.access.assertCanSubmit = async () => { throw new LeaveError("OUT_OF_SCOPE"); };
+    await expect(fixture.service.updateLeave(employee, 20, {
+      leaveTypeId: 7, startDate: "2026-09-04", endDate: "2026-09-05",
+    })).rejects.toMatchObject({ code: "OUT_OF_SCOPE" });
+    expect(fixture.calls).toEqual([]);
   });
 
   test("three days pass supervisor limit; four days fail before effects", async () => {

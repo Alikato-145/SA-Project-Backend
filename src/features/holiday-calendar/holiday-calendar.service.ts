@@ -1,3 +1,4 @@
+import { realDate } from "../../shared/operation-validation";
 import type {
   CreateHolidayCommand,
   HolidayActor,
@@ -7,6 +8,7 @@ import type {
 import { HolidayCalendarError, type HolidayCalendarRepository } from "./holiday-calendar.repository";
 
 export type HolidayCalendarAccess = {
+ assertCanReadShop?(actor:HolidayActor,shopId:number):Promise<void>;
   assertCanManageShop(actor: HolidayActor, shopId: number): Promise<void>;
 };
 
@@ -20,12 +22,12 @@ export class HolidayCalendarService {
   }
 
   async listHolidays(actor: HolidayActor, shopId: number, options: { holidayDate?: string; activeOnly?: boolean }) {
-    await this.access.assertCanManageShop(actor, shopId);
-    return this.repository.list(shopId, options);
+    await (this.access.assertCanReadShop ?? this.access.assertCanManageShop)(actor, shopId);
+    if(options.holidayDate)realDate(options.holidayDate);return this.repository.list(shopId, options);
   }
 
   async findActiveHoliday(actor: HolidayActor, shopId: number, holidayDate: string) {
-    await this.access.assertCanManageShop(actor, shopId);
+    await (this.access.assertCanReadShop ?? this.access.assertCanManageShop)(actor, shopId);
     return this.repository.list(shopId, { holidayDate, activeOnly: true });
   }
 
@@ -40,7 +42,10 @@ export class HolidayCalendarService {
     return this.updateHoliday(actor, id, { isActive: false });
   }
 
+  async getActiveHoliday(shopId:number,date:string) { return this.repository.list(shopId,{holidayDate:date,activeOnly:true}); }
+
   private assertCommand(command: CreateHolidayCommand) {
+    realDate(command.holidayDate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(command.holidayDate) || !command.name.trim()) {
       throw new HolidayCalendarError("INVALID_HOLIDAY");
     }

@@ -1,9 +1,10 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { and, eq } from "drizzle-orm";
-import { db } from "../../core/db/client";
+import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import { advanceRequests } from "./advance.schema";
 import type { AdvanceRecord } from "./advance.dto";
 
-export class AdvanceError extends Error {
+export class AdvanceError extends ApplicationError {
   constructor(public readonly code:
     | "INVALID_ADVANCE_AMOUNT" | "ADVANCE_INELIGIBLE_DATE"
     | "ADVANCE_WORK_DAYS_INSUFFICIENT" | "ADVANCE_HALF_SALARY_EXCEEDED"
@@ -27,7 +28,7 @@ const pgCode = (error: unknown) => {
 export class DrizzleAdvanceRepository implements AdvanceRepository {
   async insert(command: Parameters<AdvanceRepository["insert"]>[0]): Promise<AdvanceRecord> {
     try {
-      const [row] = await db.insert(advanceRequests).values(command).returning();
+      const [row] = await operationExecutor().insert(advanceRequests).values(command).returning();
       return row;
     } catch (error) {
       if (pgCode(error) === "23505") throw new AdvanceError("ADVANCE_ALREADY_EXISTS");
@@ -35,10 +36,10 @@ export class DrizzleAdvanceRepository implements AdvanceRepository {
     }
   }
   async findById(id: number) {
-    return db.query.advanceRequests.findFirst({ where: eq(advanceRequests.id, id) });
+    return operationExecutor().query.advanceRequests.findFirst({ where: eq(advanceRequests.id, id) });
   }
   async decide(id: number, status: "approved" | "rejected", actorId: number, note?: string): Promise<AdvanceRecord> {
-    const [row] = await db.update(advanceRequests).set({
+    const [row] = await operationExecutor().update(advanceRequests).set({
       status, decidedByUserAccountId: actorId, decidedAt: new Date(),
       decisionNote: note ?? null, updatedAt: new Date(),
     }).where(and(eq(advanceRequests.id, id), eq(advanceRequests.status, "pending"))).returning();
@@ -46,10 +47,10 @@ export class DrizzleAdvanceRepository implements AdvanceRepository {
     return row;
   }
   async listByEmployee(employeeId: number) {
-    return db.query.advanceRequests.findMany({ where: eq(advanceRequests.employeeId, employeeId) });
+    return operationExecutor().query.advanceRequests.findMany({ where: eq(advanceRequests.employeeId, employeeId) });
   }
   async findApprovedForMonth(employeeId: number, requestMonth: string) {
-    return db.query.advanceRequests.findMany({ where: and(
+    return operationExecutor().query.advanceRequests.findMany({ where: and(
       eq(advanceRequests.employeeId, employeeId),
       eq(advanceRequests.requestMonth, requestMonth),
       eq(advanceRequests.status, "approved"),

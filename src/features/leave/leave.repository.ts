@@ -1,5 +1,6 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
-import { db } from "../../core/db/client";
+import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import {
   leaveApprovalActions,
   leaveQuotas,
@@ -7,9 +8,9 @@ import {
   leaveRequests,
   leaveTypes,
 } from "./leave.schema";
-import type { LeaveDay, LeaveQuota, LeaveRequest, LeaveType, SubmitLeaveCommand } from "./leave.dto";
+import type { LeaveDay, LeaveQuota, LeaveRequest, LeaveType, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
 
-export class LeaveError extends Error {
+export class LeaveError extends ApplicationError {
   constructor(public readonly code:
     | "INVALID_LEAVE" | "LEAVE_DATE_OVERLAP" | "LEAVE_TYPE_UNAVAILABLE"
     | "LEAVE_QUOTA_EXCEEDED" | "LEAVE_QUOTA_FROZEN" | "LEAVE_NOT_FOUND"
@@ -20,7 +21,7 @@ export class LeaveError extends Error {
   }
 }
 
-type Action = "submitted" | "approved" | "rejected" | "type_changed";
+type Action = "submitted" | "approved" | "rejected" | "type_changed" | "overridden";
 export type LeaveSession = {
   /** Passed to Person C's attendance adapter so its write shares this transaction. */
   transaction: unknown;
@@ -30,6 +31,8 @@ export type LeaveSession = {
   insertRequest(command: SubmitLeaveCommand, requestedDays: number, actorId: number): Promise<LeaveRequest>;
   insertDays(requestId: number, leaveTypeId: number, dates: string[], deductible: boolean): Promise<void>;
   findRequest(id: number): Promise<LeaveRequest | undefined>;
+  updatePendingRequest(id: number, command: UpdateLeaveCommand, requestedDays: number): Promise<LeaveRequest>;
+  replaceDays(requestId: number, leaveTypeId: number, dates: string[], deductible: boolean): Promise<void>;
   findDays(requestId: number): Promise<LeaveDay[]>;
   findQuota(employeeId: number, typeId: number, year: number): Promise<LeaveQuota | undefined>;
   updateQuota(id: number, usedDays: string): Promise<void>;
@@ -40,6 +43,7 @@ export type LeaveSession = {
 
 export type LeaveRepository = {
   withTransaction<T>(work: (session: LeaveSession) => Promise<T>): Promise<T>;
+  listActiveTypes(): Promise<LeaveType[]>;
   listByEmployee(employeeId: number): Promise<LeaveRequest[]>;
   findApprovedDays(employeeId: number, startDate: string, endDate: string): Promise<LeaveDay[]>;
 };
@@ -50,9 +54,14 @@ const pgCode = (error: unknown): string | undefined => {
 };
 
 export class DrizzleLeaveRepository implements LeaveRepository {
+ async listActiveTypes() { return operationExecutor().query.leaveTypes.findMany({where:eq(leaveTypes.isActive,true)}); }
+ async listQuotas(employeeId:number,year:number) { return operationExecutor().query.leaveQuotas.findMany({where:and(eq(leaveQuotas.employeeId,employeeId),eq(leaveQuotas.quotaYear,year))}); }
+ async findById(id:number) { return operationExecutor().query.leaveRequests.findFirst({where:eq(leaveRequests.id,id)}); }
+ async history(id:number) { return operationExecutor().query.leaveApprovalActions.findMany({where:eq(leaveApprovalActions.leaveRequestId,id),orderBy:[leaveApprovalActions.actedAt,leaveApprovalActions.id]}); }
+
   async withTransaction<T>(work: (session: LeaveSession) => Promise<T>): Promise<T> {
     try {
-      return await db.transaction(async (tx) => {
+      return await operationTransaction(async (tx) => {
         const session: LeaveSession = {
           transaction: tx,
           lockEmployee: async (employeeId) => {
@@ -92,6 +101,25 @@ export class DrizzleLeaveRepository implements LeaveRepository {
           findRequest: async (id) => {
             const [row] = await tx.select().from(leaveRequests).where(eq(leaveRequests.id, id)).for("update");
             return row;
+          },
+          updatePendingRequest: async (id, command, requestedDays) => {
+            const [row] = await tx.update(leaveRequests).set({
+              originalLeaveTypeId: command.leaveTypeId,
+              startDate: command.startDate,
+              endDate: command.endDate,
+              requestedDays: String(requestedDays),
+              reason: command.reason ?? null,
+              isRetroactive: command.isRetroactive ?? false,
+              updatedAt: new Date(),
+            }).where(eq(leaveRequests.id, id)).returning();
+            return row;
+          },
+          replaceDays: async (requestId, typeId, dates, deductible) => {
+            await tx.delete(leaveRequestDays).where(eq(leaveRequestDays.leaveRequestId, requestId));
+            await tx.insert(leaveRequestDays).values(dates.map((date) => ({
+              leaveRequestId: requestId, leaveDate: date, leaveTypeId: typeId,
+              dayAmount: "1", isPaid: !deductible, isDeductible: deductible, quotaConsumed: "0",
+            })));
           },
           findDays: async (id) => tx.query.leaveRequestDays.findMany({ where: eq(leaveRequestDays.leaveRequestId, id) }),
           findQuota: async (employeeId, typeId, year) => {
@@ -134,11 +162,11 @@ export class DrizzleLeaveRepository implements LeaveRepository {
   }
 
   async listByEmployee(employeeId: number): Promise<LeaveRequest[]> {
-    return db.query.leaveRequests.findMany({ where: eq(leaveRequests.employeeId, employeeId) });
+    return operationExecutor().query.leaveRequests.findMany({ where: eq(leaveRequests.employeeId, employeeId) });
   }
 
   async findApprovedDays(employeeId: number, startDate: string, endDate: string): Promise<LeaveDay[]> {
-    return db.select({
+    return operationExecutor().select({
       id: leaveRequestDays.id, leaveRequestId: leaveRequestDays.leaveRequestId,
       workDayRecordId: leaveRequestDays.workDayRecordId, leaveTypeId: leaveRequestDays.leaveTypeId,
       leaveDate: leaveRequestDays.leaveDate, dayAmount: leaveRequestDays.dayAmount,

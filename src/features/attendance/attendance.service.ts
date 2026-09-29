@@ -1,3 +1,4 @@
+import { realDate,bangkokBusinessDate } from "../../shared/operation-validation";
 import type {
   AttendanceActor,
   CorrectWorkDayCommand,
@@ -61,7 +62,8 @@ export class AttendanceService {
   }
 
   private assertRecord(record: Pick<CreateManualWorkDayCommand, "workDate" | "clockInAt" | "clockOutAt" | "lateMinutes">) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(record.workDate) || record.lateMinutes < 0) {
+    try { realDate(record.workDate);if(record.clockInAt && bangkokBusinessDate(record.clockInAt)!==record.workDate)throw new Error();if(record.clockOutAt && Number.isNaN(record.clockOutAt.valueOf()))throw new Error(); } catch { throw new AttendanceError("INVALID_ATTENDANCE"); }
+    if (!Number.isInteger(record.lateMinutes) || record.lateMinutes < 0) {
       throw new AttendanceError("INVALID_ATTENDANCE");
     }
     if (record.clockInAt && record.clockOutAt && record.clockOutAt < record.clockInAt) {
@@ -70,6 +72,8 @@ export class AttendanceService {
   }
 
   private assertRange(filter: WorkDayRangeFilter) {
+    try {realDate(filter.startDate);realDate(filter.endDate);if((new Date(filter.endDate).valueOf()-new Date(filter.startDate).valueOf())/86400000>365)throw new Error();}catch{throw new AttendanceError("INVALID_ATTENDANCE");}
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(filter.startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(filter.endDate) || filter.endDate < filter.startDate) {
       throw new AttendanceError("INVALID_ATTENDANCE");
     }

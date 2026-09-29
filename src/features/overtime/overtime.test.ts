@@ -74,3 +74,10 @@ describe("overtime decisions", () => {
     expect(f.calls).toEqual([]);
   });
 });
+
+test("approval rechecks overtime context after scheduling or holiday changes",async()=>{
+ const f=fixture();await f.service.submitOvertime(actor,hourly);f.calls.length=0;
+ f.context.assertEligible=async()=>{throw new OvertimeError("OVERTIME_CONTEXT_INVALID");};
+ await expect(f.service.approveOvertime(actor,1)).rejects.toMatchObject({code:"OVERTIME_CONTEXT_INVALID"});
+ expect(f.calls).toEqual([]);expect(await f.service.findApprovedForPayroll(actor,11,"2026-09-01","2026-09-30")).toEqual([]);
+});

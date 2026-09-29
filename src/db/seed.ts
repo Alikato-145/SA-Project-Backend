@@ -5,8 +5,16 @@ import { SYSTEM_ROLES } from "../features/role/role.bootstrap";
 import { roles } from "../features/role/role.schema";
 import { shops } from "../features/shop/shop.schema";
 import { branches } from "../features/branch/branch.schema";
+import { branchSchedules } from "../features/branch-schedule/branch-schedule.schema";
+import { workDayRecords } from "../features/attendance/attendance.schema";
 import { departments } from "../features/department/department.schema";
+import { debtTypes } from "../features/debt/debt.schema";
 import { employees } from "../features/employee/employee.schema";
+import { employmentAssignments } from "../features/employment-assignment/employment-assignment.schema";
+import { employeeWeeklyHolidays } from "../features/employee-weekly-holiday/employee-weekly-holiday.schema";
+import { leaveQuotas, leaveTypes } from "../features/leave/leave.schema";
+import { payrollConfigurations, payrollPeriods } from "../features/payroll/payroll.schema";
+import { positions } from "../features/position/position.schema";
 import {
   userAccountRoles,
   userAccounts,
@@ -299,9 +307,86 @@ const seed = async () => {
       branchId: null,
       departmentId: null,
     });
+
+    // C4's role smoke needs an effective operational context, not only accounts.
+    const now = new Date();
+    const bangkok = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(now);
+    const [year, month, day] = bangkok.split("-").map(Number) as [number, number, number];
+    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    const effectiveFrom = `${year}-01-01`;
+
+    await transaction.insert(positions).values({ shopId: demoShopId, code: "DEMO-STAFF", name: "พนักงานตัวอย่าง" })
+      .onConflictDoNothing();
+    const [position] = await transaction.select({ id: positions.id }).from(positions)
+      .where(and(eq(positions.shopId, demoShopId), eq(positions.code, "DEMO-STAFF"))).limit(1);
+    if (!position) throw new Error("Demo position seed failed.");
+
+    await transaction.insert(employmentAssignments).values({
+      employeeId: demoEmployeeId, branchId: demoBranchId, departmentId: demoDepartmentId,
+      positionId: position.id, baseSalary: "20000.00", welfareAmount: "1000.00",
+      effectiveFrom, createdByUserAccountId: accountId,
+    }).onConflictDoNothing();
+
+    await transaction.insert(branchSchedules).values({
+      branchId: demoBranchId, workStartTime: "09:00:00", standardCloseTime: "18:00:00",
+      lateGraceMinutes: 10, effectiveFrom,
+    }).onConflictDoNothing();
+    await transaction.insert(employeeWeeklyHolidays).values({
+      employeeId: demoEmployeeId, weekday: 0, effectiveFrom,
+    }).onConflictDoNothing();
+
+    const payrollConfig = [
+      ["STANDARD_WORK_DAYS", "26.0000", "days"], ["ABSENCE_RATE", "1.0000", "multiplier"],
+      ["LATE_RATE", "2.0000", "currency_per_minute"], ["SOCIAL_SECURITY_RATE", "0.0500", "ratio"],
+      ["SOCIAL_SECURITY_CAP", "750.0000", "currency"], ["OT_HOURLY_RATE", "1.5000", "multiplier"],
+      ["OT_REST_DAY_RATE", "1.0000", "multiplier"], ["OT_PUBLIC_HOLIDAY_RATE", "2.0000", "multiplier"],
+    ] as const;
+    for (const [configKey, numericValue, unit] of payrollConfig) {
+      await transaction.insert(payrollConfigurations).values({
+        shopId: demoShopId, branchId: demoBranchId, configKey, numericValue, unit,
+        effectiveFrom, createdByUserAccountId: accountId,
+      }).onConflictDoNothing();
+    }
+
+    const leaveTypeSeeds = [
+      { code: "DEMO_SICK", nameTh: "ลาป่วย", quotaType: "fixed", quotaDays: "30.00", isDeductible: false, requiresDocument: false },
+      { code: "DEMO_PERSONAL", nameTh: "ลากิจ", quotaType: "fixed", quotaDays: "3.00", isDeductible: false, requiresDocument: false },
+      { code: "DEMO_ANNUAL", nameTh: "ลาพักร้อน", quotaType: "fixed", quotaDays: "6.00", isDeductible: false, requiresDocument: false },
+      { code: "DEMO_UNPAID", nameTh: "ลาไม่รับค่าจ้าง", quotaType: "none", quotaDays: null, isDeductible: true, requiresDocument: false },
+    ] as const;
+    for (const leaveType of leaveTypeSeeds) {
+      await transaction.insert(leaveTypes).values(leaveType).onConflictDoUpdate({
+        target: leaveTypes.code,
+        set: { nameTh: leaveType.nameTh, quotaType: leaveType.quotaType, quotaDays: leaveType.quotaDays, isDeductible: leaveType.isDeductible, requiresDocument: leaveType.requiresDocument, isActive: true },
+      });
+      if (leaveType.quotaDays) {
+        const [type] = await transaction.select({ id: leaveTypes.id }).from(leaveTypes).where(eq(leaveTypes.code, leaveType.code)).limit(1);
+        if (!type) throw new Error(`Leave type seed failed: ${leaveType.code}`);
+        await transaction.insert(leaveQuotas).values({ employeeId: demoEmployeeId, leaveTypeId: type.id, quotaYear: year, entitledDays: leaveType.quotaDays, usedDays: "0" }).onConflictDoNothing();
+      }
+    }
+    await transaction.insert(debtTypes).values({
+      code: "DEMO_FOOD", nameTh: "ค่าอาหารตัวอย่าง", description: "ข้อมูลสำหรับทดสอบ C4",
+    }).onConflictDoNothing();
+    await transaction.insert(payrollPeriods).values({
+      shopId: demoShopId, periodYear: year, periodMonth: month, startDate: monthStart,
+      endDate: monthEnd, createdByUserAccountId: accountId,
+    }).onConflictDoNothing();
+
+    for (let date = 1; date <= day; date += 1) {
+      const workDate = `${year}-${String(month).padStart(2, "0")}-${String(date).padStart(2, "0")}`;
+      if (new Date(`${workDate}T00:00:00Z`).getUTCDay() === 0) continue;
+      await transaction.insert(workDayRecords).values({
+        employeeId: demoEmployeeId, branchId: demoBranchId, workDate, status: "present",
+        lateMinutes: 0, isDeductible: false, entrySource: "manual", createdByUserAccountId: accountId,
+      }).onConflictDoNothing();
+    }
   });
 
-  console.log("Seeded development role accounts: admin, hr, branch_manager, supervisor, employee.");
+  console.log("Seeded development C4 fixtures: accounts, assignment, schedule, payroll configuration, and attendance.");
 };
 
 try {

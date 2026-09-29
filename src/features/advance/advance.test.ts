@@ -63,3 +63,14 @@ describe("advance eligibility", () => {
     expect(f.decisions).toBe(0);
   });
 });
+
+test("configured advance thresholds replace defaults and retain exact salary caps",async()=>{
+ const f=fixture();const service=new AdvanceService(f.repository,f.access,f.eligibility,f.projection,()=>"2026-09-25",{requestDay:25,workedDays:21,salaryRatio:"0.4000"});
+ await expect(service.approveAdvance(actor,1)).rejects.toMatchObject({code:"ADVANCE_INELIGIBLE_DATE"});
+ f.repository.findById=async()=>({...request,requestedAt:new Date("2026-09-25T10:00:00+07:00"),amount:"4000.00"});
+ await expect(service.approveAdvance(actor,1)).rejects.toMatchObject({code:"ADVANCE_WORK_DAYS_INSUFFICIENT"});
+ f.eligibility.getWorkedDays=async()=>21;
+ expect((await service.approveAdvance(actor,1)).status).toBe("approved");
+ f.repository.findById=async()=>({...request,requestedAt:new Date("2026-09-25T10:00:00+07:00"),amount:"4000.01"});
+ await expect(service.approveAdvance(actor,1)).rejects.toMatchObject({code:"ADVANCE_HALF_SALARY_EXCEEDED"});
+});

@@ -1,3 +1,4 @@
+import { realDate } from "../../shared/operation-validation";
 import type { AdvanceActor } from "./advance.dto";
 import { AdvanceError, type AdvanceRepository } from "./advance.repository";
 
@@ -11,7 +12,7 @@ export type AdvanceEligibility = {
   getBaseSalary(employeeId: number, requestDate: string): Promise<string>;
 };
 export type AdvanceProjection = {
-  netPayAfterAdvance(employeeId: number, month: string, amount: string): Promise<string>;
+  netPayAfterAdvance(employeeId: number, month: string, amount: string,requestId?:number,requestDate?:string): Promise<string>;
 };
 const cents = (value: string, allowNegative = false): bigint => {
   const pattern = allowNegative ? /^-?\d+(?:\.\d{1,2})?$/ : /^\d+(?:\.\d{1,2})?$/;
@@ -35,6 +36,7 @@ export class AdvanceService {
     private readonly eligibility: AdvanceEligibility,
     private readonly projection: AdvanceProjection,
     private readonly today: () => string = () => bangkokDate(new Date()),
+    private readonly thresholds={requestDay:20,workedDays:20,salaryRatio:"0.5000"},
   ) {}
   async submitAdvance(actor: AdvanceActor, employeeId: number, amount: string) {
     const date = this.today();
@@ -52,12 +54,13 @@ export class AdvanceService {
     await this.access.assertCanDecide(actor, request.employeeId, date);
     this.assertEligibleDate(date);
     const worked = await this.eligibility.getWorkedDays(actor, request.employeeId, request.requestMonth, date);
-    if (worked < 20) throw new AdvanceError("ADVANCE_WORK_DAYS_INSUFFICIENT");
+    if (worked < this.thresholds.workedDays) throw new AdvanceError("ADVANCE_WORK_DAYS_INSUFFICIENT");
     const amount = cents(request.amount);
     const salary = cents(await this.eligibility.getBaseSalary(request.employeeId, date));
-    if (amount * 2n > salary) throw new AdvanceError("ADVANCE_HALF_SALARY_EXCEEDED");
+    const ratio=BigInt(this.thresholds.salaryRatio.split(".")[1]!.padEnd(4,"0"));
+    if (amount * 10000n > salary * ratio) throw new AdvanceError("ADVANCE_HALF_SALARY_EXCEEDED");
     const net = cents(await this.projection.netPayAfterAdvance(
-      request.employeeId, request.requestMonth, request.amount,
+      request.employeeId, request.requestMonth, request.amount,request.id,date,
     ), true);
     if (net < 0n) throw new AdvanceError("ADVANCE_NEGATIVE_NET_PAY");
     return this.repository.decide(id, "approved", actor.accountId);
@@ -76,7 +79,8 @@ export class AdvanceService {
     return this.repository.findApprovedForMonth(employeeId, month);
   }
   private assertEligibleDate(date: string) {
-    if (!/^\d{4}-\d{2}-(?:2\d|3[01])$/.test(date)) {
+    try {realDate(date);}catch{throw new AdvanceError("ADVANCE_INELIGIBLE_DATE");}
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number(date.slice(-2)) < this.thresholds.requestDay) {
       throw new AdvanceError("ADVANCE_INELIGIBLE_DATE");
     }
   }

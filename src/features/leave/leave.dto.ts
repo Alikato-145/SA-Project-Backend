@@ -1,4 +1,5 @@
-export type LeaveActor = {
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type LeaveActor = OperationActor & {
   accountId: number;
   scope: "self" | "department" | "branch" | "all";
 };
@@ -11,6 +12,8 @@ export type SubmitLeaveCommand = {
   reason?: string | null;
   isRetroactive?: boolean;
 };
+
+export type UpdateLeaveCommand = Omit<SubmitLeaveCommand, "employeeId">;
 
 export type LeaveRequest = {
   id: number;
@@ -44,11 +47,15 @@ export type LeaveDay = {
 
 export type LeaveType = {
   id: number;
+  nameTh: string;
   quotaType: "fixed" | "by_seniority" | "none";
   isDeductible: boolean;
+  requiresDocument: boolean;
   allowExceed: boolean;
   isActive: boolean;
 };
+
+export type LeaveTypeResponse = Pick<LeaveType, "id" | "nameTh" | "requiresDocument">;
 
 export type LeaveQuota = {
   id: number;
@@ -79,4 +86,5 @@ export type LeaveResponse = {
   requestedDays: string;
   status: LeaveRequest["status"];
   reason: string | null;
+  isRetroactive: boolean;
 };

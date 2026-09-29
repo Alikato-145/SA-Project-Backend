@@ -43,7 +43,7 @@ export const createPayrollHarness = (options: {
     approvedByUserAccountId: adjustmentStatus === "pending" ? null : "1", approvedAt: adjustmentStatus === "pending" ? null : new Date(),
     appliedPayrollItemId: null });
   const session = {
-    executor: {} as PayrollRepositorySession["executor"],
+    executor: { execute: async () => undefined } as unknown as PayrollRepositorySession["executor"],
     findActiveShop: async () => options.shopExists ?? true,
     findConfigurationOverlap: async () => options.overlap ?? false,
     insertConfiguration: async () => configuration,

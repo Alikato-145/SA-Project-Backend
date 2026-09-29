@@ -1,4 +1,4 @@
-import type { ApprovedLeaveInput, LeaveActor, LeaveRequest, SubmitLeaveCommand } from "./leave.dto";
+import type { ApprovedLeaveInput, LeaveActor, LeaveRequest, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
 import { LeaveError, type LeaveRepository, type LeaveSession } from "./leave.repository";
 
 export type LeaveAccess = {
@@ -13,7 +13,7 @@ export type LeavePayrollLock = {
   assertDatesUnlocked(transaction: unknown, employeeId: number, dates: string[]): Promise<void>;
 };
 
-const datesInclusive = (start: string, end: string): string[] => {
+export const datesInclusive = (start: string, end: string): string[] => {
   const pattern = /^\d{4}-\d{2}-\d{2}$/;
   if (!pattern.test(start) || !pattern.test(end) || end < start) throw new LeaveError("INVALID_LEAVE");
   const first = new Date(`${start}T00:00:00Z`);
@@ -52,6 +52,31 @@ export class LeaveService {
       await session.insertDays(request.id, type.id, dates, type.isDeductible);
       await session.appendAction(request.id, actor.accountId, "submitted");
       return request;
+    });
+  }
+
+  async updateLeave(actor: LeaveActor, id: number, command: UpdateLeaveCommand): Promise<LeaveRequest> {
+    const dates = datesInclusive(command.startDate, command.endDate);
+    return this.repository.withTransaction(async (session) => {
+      const request = await this.requirePending(session, id);
+      await this.access.assertCanSubmit(actor, request.employeeId, dates);
+      await session.lockEmployee(request.employeeId);
+      if (await session.findOverlap(request.employeeId, command.startDate, command.endDate, id)) {
+        throw new LeaveError("LEAVE_DATE_OVERLAP");
+      }
+      const type = await session.findType(command.leaveTypeId);
+      if (!type?.isActive) throw new LeaveError("LEAVE_TYPE_UNAVAILABLE");
+      const updated = await session.updatePendingRequest(id, command, dates.length);
+      await session.replaceDays(id, type.id, dates, type.isDeductible);
+      await session.appendAction(
+        id,
+        actor.accountId,
+        "overridden",
+        request.originalLeaveTypeId,
+        type.id,
+        `แก้ไขคำขอลา ${request.startDate}–${request.endDate} เป็น ${command.startDate}–${command.endDate}`,
+      );
+      return updated;
     });
   }
 
@@ -139,6 +164,10 @@ export class LeaveService {
   async listRequests(actor: LeaveActor, employeeId: number) {
     await this.access.assertCanRead(actor, employeeId);
     return this.repository.listByEmployee(employeeId);
+  }
+
+  async listLeaveTypes(_actor: LeaveActor) {
+    return this.repository.listActiveTypes();
   }
 
   private async requirePending(session: LeaveSession, id: number) {
