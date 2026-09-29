@@ -35,7 +35,7 @@ export const createLeaveRuntimeService=(runtime:OperationRuntime,attendance:Atte
    for(const row of rows) {try {for(const date of datesInclusive(row.startDate,row.endDate))await runtime.context.assertEmployee(actor,employeeId,date,"read");visible.push(row);}catch(error){if(!(error instanceof ApplicationError)||error.code!=="FORBIDDEN_SCOPE")throw error;}}
    if(rows.length && !visible.length)throw new ApplicationError("FORBIDDEN_SCOPE");return visible;
   },
-  async listTypes(actor:Parameters<typeof submit>[0]) {if(!actor.trustedActor)throw new ApplicationError("AUTH_REQUIRED");return (await repository.listTypes()).map(row=>({...row,name:row.nameTh}));},
+  async listTypes(actor:Parameters<typeof submit>[0]) {if(!actor.trustedActor)throw new ApplicationError("AUTH_REQUIRED");return (await repository.listActiveTypes()).map(row=>({...row,name:row.nameTh}));},
   async listQuotas(actor:Parameters<typeof submit>[0],employeeId:number,year:number) {await runtime.context.assertEmployee(actor,employeeId,bangkokToday(),"read");return repository.listQuotas(employeeId,year);},
   async getHistory(actor:Parameters<typeof submit>[0],id:number) {const record=await repository.findById(id);if(!record)throw new ApplicationError("RESOURCE_NOT_FOUND");await datesAccess(actor,record.employeeId,datesInclusive(record.startDate,record.endDate),"submit");return repository.history(id);},
  });

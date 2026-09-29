@@ -43,6 +43,7 @@ export type LeaveSession = {
 
 export type LeaveRepository = {
   withTransaction<T>(work: (session: LeaveSession) => Promise<T>): Promise<T>;
+  listActiveTypes(): Promise<LeaveType[]>;
   listByEmployee(employeeId: number): Promise<LeaveRequest[]>;
   findApprovedDays(employeeId: number, startDate: string, endDate: string): Promise<LeaveDay[]>;
 };
@@ -53,7 +54,7 @@ const pgCode = (error: unknown): string | undefined => {
 };
 
 export class DrizzleLeaveRepository implements LeaveRepository {
- async listTypes() { return operationExecutor().query.leaveTypes.findMany({where:eq(leaveTypes.isActive,true)}); }
+ async listActiveTypes() { return operationExecutor().query.leaveTypes.findMany({where:eq(leaveTypes.isActive,true)}); }
  async listQuotas(employeeId:number,year:number) { return operationExecutor().query.leaveQuotas.findMany({where:and(eq(leaveQuotas.employeeId,employeeId),eq(leaveQuotas.quotaYear,year))}); }
  async findById(id:number) { return operationExecutor().query.leaveRequests.findFirst({where:eq(leaveRequests.id,id)}); }
  async history(id:number) { return operationExecutor().query.leaveApprovalActions.findMany({where:eq(leaveApprovalActions.leaveRequestId,id),orderBy:[leaveApprovalActions.actedAt,leaveApprovalActions.id]}); }
