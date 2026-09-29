@@ -3,6 +3,7 @@
   "version": "1.0.50",
   "scripts": {
     "test": "bun test",
+    "test:person-a:db": "sh scripts/test-person-a-db.sh",
     "dev": "bun run --watch src/index.ts",
     "dev:docker": "nodemon --legacy-watch --watch src --ext ts --exec \"bun run src/index.ts\"",
     "db:generate": "drizzle-kit generate",
