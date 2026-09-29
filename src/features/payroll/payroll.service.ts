@@ -2,8 +2,9 @@ import type { DatabaseExecutor } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
 import { assertPayrollMutationAccess, assertPayrollRecordAccess, payrollReadableBranchIds } from "./payroll.authorization";
 import { calculatePayroll, payrollRecordTotalsReconcile } from "./calculation/payroll-calculator";
-import { money } from "./calculation/decimal";
-import type { PayrollInputProvider, PayrollRepository, PayrollRepositorySession } from "./payroll.repository";
+import { formatMoney, money } from "./calculation/decimal";
+import type { DrizzlePayrollInputRepository, PayrollInputMutation, PayrollInputProvider, PayrollRepository, PayrollRepositorySession } from "./payroll.repository";
+import { serializePayrollInputs } from "./payroll.input-lock.repository";
 import type {
   CreatePayrollConfigurationCommand,
   CreatePayrollPeriodCommand,
@@ -153,6 +154,7 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
     assertPayrollMutationAccess(actor);
     try {
       return await dependencies.repository.withTransaction(async (session) => {
+        await serializePayrollInputs(session.executor);
         let period = await requirePeriod(session, periodId, true);
         if (period.status === "locked") throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
         const loaded = await dependencies.inputs.load(session, period);
@@ -180,6 +182,7 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
     assertPayrollMutationAccess(actor);
     try {
       return await dependencies.repository.withTransaction(async (session) => {
+        await serializePayrollInputs(session.executor);
         let period = await requirePeriod(session, periodId, true);
         if (period.status === "locked") throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
         const loaded = await dependencies.inputs.load(session, period, { lockSources: true });
@@ -248,3 +251,37 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
 });
 
 export type PayrollService = ReturnType<typeof createPayrollService>;
+
+
+export const createPayrollInputService = (
+  repository: DrizzlePayrollInputRepository,
+  inputs: PayrollInputProvider,
+) => ({
+  serialize: serializePayrollInputs,
+  getDebtSettlement(executor: DatabaseExecutor, debtId: number) {
+    return repository.findDebtSettlement(executor, debtId);
+  },
+  async assertInputsMutable(executor: DatabaseExecutor, target: PayrollInputMutation): Promise<void> {
+    assertPayrollRange(target.startDate, target.endDate);
+    if (target.employeeId === undefined && target.branchId === undefined && target.shopId === undefined) {
+      throw new ApplicationError("VALIDATION_ERROR");
+    }
+    await serializePayrollInputs(executor);
+    if (await repository.findLockedInputPeriod(executor, target)) throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
+  },
+  async projectAdvance(executor: DatabaseExecutor, command: { employeeId: number; date: string; amount: string; requestId?: number }): Promise<string> {
+    parsePayrollDecimal(command.amount, "amount", true);
+    assertPayrollRange(command.date, command.date);
+    await serializePayrollInputs(executor);
+    const period = await repository.findProjectionPeriod(executor, command.employeeId, command.date);
+    if (!period) throw new ApplicationError("PAYROLL_PERIOD_NOT_FOUND");
+    if (period.status === "locked") throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
+    const loaded = await inputs.load(repository.session(executor), period, { projectionCutoff: command.date });
+    const blocker = loaded.blockers.find((row) => row.employeeId === null || row.employeeId === String(command.employeeId));
+    if (blocker) throw new ApplicationError(blocker.code);
+    const input = loaded.inputs.find((row) => row.employeeId === String(command.employeeId));
+    if (!input) throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING");
+    return formatMoney(money(calculatePayroll(input).netPay) - money(command.amount));
+  },
+});
+export type PayrollInputService = ReturnType<typeof createPayrollInputService>;

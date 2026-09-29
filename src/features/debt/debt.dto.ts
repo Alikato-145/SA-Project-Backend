@@ -1,4 +1,5 @@
-export type DebtActor = { accountId: number };
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type DebtActor = OperationActor & { accountId: number };
 export type DebtTransaction = {
   id: number; employeeId: number; debtTypeId: number;
   transactionKind: "charge" | "adjustment" | "reversal";

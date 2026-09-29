@@ -69,3 +69,11 @@ describe("append-only debt", () => {
     expect(await f.service.findCandidatesForPayroll({ accountId: 2 }, 10, "2026-09-30")).toEqual([]);
   });
 });
+
+test("settled debt keeps historical balance while outstanding excludes settlement and reversals",async()=>{
+ const f=fixture();f.rows[0]!.settledAt=new Date();f.rows[0]!.settledInPayrollRecordId=50;
+ const ledger=await f.service.getLedger({accountId:2},10);
+ expect(ledger.balance).toBe("40.00");expect(ledger.outstandingBalance).toBe("0.00");expect(ledger.entries).toHaveLength(1);
+ const reversed=fixture();await reversed.service.reverse({accountId:2},1,"Correction");
+ expect((await reversed.service.getLedger({accountId:2},10)).outstandingBalance).toBe("0.00");
+});

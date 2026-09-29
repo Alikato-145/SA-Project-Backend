@@ -94,6 +94,10 @@ export interface PayrollCalculationInput {
     absenceConfigurationId?: string;
     lateConfigurationId?: string;
   }[];
+  approvedLeaveEvidence?: readonly {
+    id: string; requestId: string; date: string; originalTypeId: string; approvedTypeId: string;
+    paid: boolean; deductible: boolean; quotaConsumed: string;
+  }[];
   overtime: readonly {
     id: string;
     date: string;

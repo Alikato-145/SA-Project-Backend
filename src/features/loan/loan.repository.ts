@@ -1,9 +1,10 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { and, eq, inArray, lte } from "drizzle-orm";
-import { db } from "../../core/db/client";
+import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import { loanInstallments, loans } from "./loan.schema";
 import type { CreateLoanCommand, LoanInstallment, LoanWithInstallments } from "./loan.dto";
 
-export class LoanError extends Error {
+export class LoanError extends ApplicationError {
   constructor(public readonly code:
     | "LOAN_INVALID_INSTALLMENTS" | "LOAN_NOT_FOUND" | "LOAN_ALREADY_DEDUCTED"
     | "OUT_OF_SCOPE" | "PAYROLL_PERIOD_NOT_LOCKED") {
@@ -20,7 +21,7 @@ export type LoanRepository = {
 };
 export class DrizzleLoanRepository implements LoanRepository {
   async create(command: CreateLoanCommand & { approvedByUserAccountId: number }, schedule: Schedule[]): Promise<LoanWithInstallments> {
-    return db.transaction(async (tx) => {
+    return operationTransaction(async (tx) => {
       const [loan] = await tx.insert(loans).values({
         employeeId: command.employeeId, principalAmount: command.principalAmount,
         installmentCount: command.installmentCount, reason: command.reason,
@@ -34,15 +35,15 @@ export class DrizzleLoanRepository implements LoanRepository {
     });
   }
   async listByEmployee(employeeId: number): Promise<LoanWithInstallments[]> {
-    const rows = await db.query.loans.findMany({ where: eq(loans.employeeId, employeeId) });
+    const rows = await operationExecutor().query.loans.findMany({ where: eq(loans.employeeId, employeeId) });
     if (!rows.length) return [];
-    const installments = await db.query.loanInstallments.findMany({
+    const installments = await operationExecutor().query.loanInstallments.findMany({
       where: inArray(loanInstallments.loanId, rows.map((row) => row.id)),
     });
     return rows.map((loan) => ({ loan, installments: installments.filter((row) => row.loanId === loan.id) }));
   }
   async findDue(employeeId: number, periodStart: string): Promise<LoanInstallment[]> {
-    const rows = await db.select({ installment: loanInstallments }).from(loanInstallments)
+    const rows = await operationExecutor().select({ installment: loanInstallments }).from(loanInstallments)
       .innerJoin(loans, eq(loanInstallments.loanId, loans.id))
       .where(and(eq(loans.employeeId, employeeId),
         eq(loanInstallments.status, "scheduled"),
@@ -50,13 +51,13 @@ export class DrizzleLoanRepository implements LoanRepository {
     return rows.map((row) => row.installment);
   }
   async findInstallmentById(id: number) {
-    const [row] = await db.select({ installment: loanInstallments, employeeId: loans.employeeId })
+    const [row] = await operationExecutor().select({ installment: loanInstallments, employeeId: loans.employeeId })
       .from(loanInstallments).innerJoin(loans, eq(loanInstallments.loanId, loans.id))
       .where(eq(loanInstallments.id, id));
     return row;
   }
   async settleInstallment(transaction: unknown, id: number, payrollRecordId: number): Promise<LoanInstallment> {
-    const tx = transaction as typeof db;
+    const tx = transaction as ReturnType<typeof operationExecutor>;
     const [row] = await tx.update(loanInstallments).set({
       status: "deducted", payrollRecordId, deductedAt: new Date(), updatedAt: new Date(),
     }).where(and(eq(loanInstallments.id, id), eq(loanInstallments.status, "scheduled"))).returning();

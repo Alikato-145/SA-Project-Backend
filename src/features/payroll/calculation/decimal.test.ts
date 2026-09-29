@@ -9,6 +9,13 @@ describe("payroll fixed-point decimals", () => {
     expect(formatFixed(-125n, 2)).toBe("-1.25");
   });
 
+  test("accepts database padding only when extra precision is exactly zero", () => {
+    expect(parseFixed("30.0000", 2)).toBe(3000n);
+    expect(parseFixed("-30.1200", 2)).toBe(-3012n);
+    expect(parseFixed("30.0000", 0)).toBe(30n);
+    expect(() => parseFixed("30.0001", 2)).toThrow("Invalid decimal value");
+  });
+
   test("rounds half up for positive and negative ties", () => {
     expect(rescaleHalfUp(125n, 2, 1)).toBe(13n);
     expect(rescaleHalfUp(-125n, 2, 1)).toBe(-13n);

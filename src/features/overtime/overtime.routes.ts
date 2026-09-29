@@ -1,27 +1,16 @@
-import Elysia, { t } from "elysia";
-import type { OvertimeActor } from "./overtime.dto";
+import { t } from "elysia";
+import { operationTransport, type OperationTransportOptions } from "../../core/middleware/operation-transport";
+import { operationId as id, operationDate as date, operationMoney as money } from "../../shared/operation-validation";
+const object=(fields:any)=>t.Object(fields,{additionalProperties:false});
+const params=object({id});
+const employeeQuery=object({employee_id:id});
+const text=t.Optional(t.String({maxLength:1000}));
+const nullableText=t.Optional(t.Union([t.String({maxLength:1000}),t.Null()]));
 import { OvertimeController } from "./overtime.controller";
+export const createOvertimeRoutes=(options:OperationTransportOptions & {controller:OvertimeController})=> operationTransport("b5-overtime",options)
 
-const id = t.Number({ minimum: 1 });
-const params = t.Object({ id: t.Numeric({ minimum: 1 }) });
-const remark = t.Object({ remark: t.Optional(t.String()) });
-export const createOvertimeRoutes = (controller: OvertimeController, actorFromContext: (context: unknown) => OvertimeActor | Promise<OvertimeActor>) =>
-  new Elysia({ name: "overtime" })
-    .get("/overtime-records", async (context) =>
-      controller.list(await actorFromContext(context), context.query.employee_id),
-      { query: t.Object({ employee_id: t.Numeric({ minimum: 1 }) }) })
-    .post("/overtime-records", async (context) =>
-      controller.submit(await actorFromContext(context), context.body),
-      { body: t.Object({
-        employee_id: id,
-        overtime_date: t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
-        overtime_type: t.Union([t.Literal("hourly"), t.Literal("rest_day"), t.Literal("public_holiday")]),
-        hours: t.Optional(t.String()), day_units: t.Optional(t.String()),
-        work_day_record_id: t.Optional(id), reason: t.Optional(t.String()),
-      }) })
-    .post("/overtime-records/:id/approve", async (context) =>
-      controller.approve(await actorFromContext(context), context.params.id, context.body),
-      { params, body: remark })
-    .post("/overtime-records/:id/reject", async (context) =>
-      controller.reject(await actorFromContext(context), context.params.id, context.body),
-      { params, body: remark });
+ .get("/overtime-records/:id/history",({actor,params})=>options.controller.history(actor,params.id),{params})
+ .get("/overtime-records",({actor,query})=>options.controller.list(actor,query.employee_id),{query:employeeQuery})
+ .post("/overtime-records",({actor,body})=>options.controller.submit(actor,body),{body:object({employee_id:id,overtime_date:date,overtime_type:t.Union([t.Literal("hourly"),t.Literal("rest_day"),t.Literal("public_holiday")]),hours:t.Optional(money),day_units:t.Optional(money),work_day_record_id:t.Optional(id),reason:text})})
+ .post("/overtime-records/:id/approve",({actor,params,body})=>options.controller.approve(actor,params.id,body),{params,body:object({remark:text})})
+ .post("/overtime-records/:id/reject",({actor,params,body})=>options.controller.reject(actor,params.id,body),{params,body:object({remark:text})});

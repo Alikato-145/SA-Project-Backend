@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { branches } from "../branch/branch.schema";
 import { db } from "../../core/db/client";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { advanceRequests } from "../advance/advance.schema";
@@ -85,7 +86,7 @@ export interface PayrollRepository {
   listAdjustments(recordId?: string): Promise<PayrollAdjustmentRecord[]>;
 }
 
-const createSession = (executor: Executor): PayrollRepositorySession => ({
+export const createPayrollRepositorySession = (executor: Executor): PayrollRepositorySession => ({
   executor,
   async findActiveShop(shopId) {
     const [shop] = await executor.select({ id: shops.id }).from(shops)
@@ -167,10 +168,10 @@ const createSession = (executor: Executor): PayrollRepositorySession => ({
     for (const record of records) {
       const [inserted] = await executor.insert(payrollRecords).values({
         payrollPeriodId: period, employeeId: numericId(record.employeeId), employmentAssignmentId: numericId(record.assignmentId),
-        status: locked ? "locked" : "calculated", baseSalarySnapshot: record.baseSalarySnapshot,
+        status: "calculated", baseSalarySnapshot: record.baseSalarySnapshot,
         welfareSnapshot: record.welfareSnapshot, totalEarnings: record.totalEarnings,
         totalDeductions: record.totalDeductions, netPay: record.netPay,
-        calculatedAt: new Date(), calculatedByUserAccountId: numericId(actorId), lockedAt: locked ? new Date() : null,
+        calculatedAt: new Date(), calculatedByUserAccountId: numericId(actorId), lockedAt: null,
       }).returning({ id: payrollRecords.id });
       for (const item of record.items) {
         const [insertedItem] = await executor.insert(payrollItems).values({
@@ -184,6 +185,9 @@ const createSession = (executor: Executor): PayrollRepositorySession => ({
             .where(and(eq(payrollAdjustments.id, numericId(item.sourceId)), eq(payrollAdjustments.status, "approved")));
         }
       }
+      // Finalize only after all snapshot lines exist; locked-item triggers then protect the complete record.
+      if (locked) await executor.update(payrollRecords).set({ status: "locked", lockedAt: new Date(), updatedAt: new Date() })
+        .where(eq(payrollRecords.id, inserted.id));
     }
   },
   async settleFinanceSources(periodId) {
@@ -193,11 +197,10 @@ const createSession = (executor: Executor): PayrollRepositorySession => ({
       const sources = await executor.select({ table: payrollItems.sourceTable, id: payrollItems.sourceId })
         .from(payrollItems).where(eq(payrollItems.payrollRecordId, record.id));
       const loanIds = sources.filter((row) => row.table === "loan_installments" && row.id !== null).map((row) => row.id!);
-      const debtIds = sources.filter((row) => row.table === "debt_transactions" && row.id !== null).map((row) => row.id!);
       const advanceIds = sources.filter((row) => row.table === "advance_requests" && row.id !== null).map((row) => row.id!);
       if (advanceIds.length) await executor.update(advanceRequests).set({ status: "deducted", updatedAt: new Date() }).where(and(inArray(advanceRequests.id, advanceIds), eq(advanceRequests.status, "approved")));
       if (loanIds.length) await executor.update(loanInstallments).set({ status: "deducted", deductedAt: new Date(), payrollRecordId: record.id, updatedAt: new Date() }).where(inArray(loanInstallments.id, loanIds));
-      if (debtIds.length) await executor.update(debtTransactions).set({ settledAt: new Date(), settledInPayrollRecordId: record.id, updatedAt: new Date() }).where(inArray(debtTransactions.id, debtIds));
+      // Frozen debt rows are append-only. Their locked source item is the settlement evidence.
     }
   },
   async insertAdjustment(command) {
@@ -239,7 +242,7 @@ const toAdjustment = (row: typeof payrollAdjustments.$inferSelect): PayrollAdjus
 
 export class DrizzlePayrollRepository implements PayrollRepository {
   withTransaction<T>(work: (session: PayrollRepositorySession) => Promise<T>): Promise<T> {
-    return db.transaction((transaction) => work(createSession(transaction)));
+    return db.transaction((transaction) => work(createPayrollRepositorySession(transaction)));
   }
   async listConfigurations(shopId: string) {
     const rows = await db.select().from(payrollConfigurations).where(eq(payrollConfigurations.shopId, numericId(shopId)))
@@ -252,7 +255,7 @@ export class DrizzlePayrollRepository implements PayrollRepository {
     return rows.map(toPeriod);
   }
   async findPeriod(periodId: string) {
-    return createSession(db).findPeriod(periodId);
+    return createPayrollRepositorySession(db).findPeriod(periodId);
   }
   async findRecordBranch(recordId: string) {
     const [row] = await db.select({ branchId: employmentAssignments.branchId }).from(payrollRecords)
@@ -322,7 +325,7 @@ export interface PayrollInputLoadResult {
 }
 
 export interface PayrollInputProvider {
-  load(session: PayrollRepositorySession, period: PayrollPeriodRecord, options?: { lockSources?: boolean }): Promise<PayrollInputLoadResult>;
+  load(session: PayrollRepositorySession, period: PayrollPeriodRecord, options?: { lockSources?: boolean; projectionCutoff?: string }): Promise<PayrollInputLoadResult>;
 }
 
 export const payrollInclusiveDates = (start: string, end: string): string[] => {
@@ -340,12 +343,15 @@ export const payrollEffectiveOn = <T extends { effectiveFrom: string; effectiveT
   rows.find((row) => row.effectiveFrom <= date && (row.effectiveTo === null || row.effectiveTo >= date));
 
 export class DrizzlePayrollInputProvider implements PayrollInputProvider {
-  async load(session: PayrollRepositorySession, period: PayrollPeriodRecord, options: { lockSources?: boolean } = {}): Promise<PayrollInputLoadResult> {
+  async load(session: PayrollRepositorySession, period: PayrollPeriodRecord, options: { lockSources?: boolean; projectionCutoff?: string } = {}): Promise<PayrollInputLoadResult> {
     const executor = session.executor;
+    const earningEnd = options.projectionCutoff ?? period.endDate;
     const assignmentQuery = executor.select({ assignment: employmentAssignments, employeeCode: employees.employeeCode })
       .from(employmentAssignments)
       .innerJoin(employees, eq(employmentAssignments.employeeId, employees.id))
+      .innerJoin(branches, eq(employmentAssignments.branchId, branches.id))
       .where(and(
+        eq(branches.shopId, numericId(period.shopId)),
         eq(employmentAssignments.isPrimary, true),
         lte(employmentAssignments.effectiveFrom, period.endDate),
         or(isNull(employmentAssignments.effectiveTo), gte(employmentAssignments.effectiveTo, period.startDate)),
@@ -359,16 +365,19 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       assignmentsByEmployee.set(row.assignment.employeeId, rows);
     }
 
+    const employeeIds = [...assignmentsByEmployee.keys()];
+    if (employeeIds.length === 0) return { inputs: [], blockers: [], pendingApprovals: false };
+
     const pendingLeaveQuery = executor.select({ id: leaveRequests.id }).from(leaveRequests).where(and(
-      eq(leaveRequests.status, "pending"), lte(leaveRequests.startDate, period.endDate), gte(leaveRequests.endDate, period.startDate),
+      inArray(leaveRequests.employeeId, employeeIds), eq(leaveRequests.status, "pending"), lte(leaveRequests.startDate, period.endDate), gte(leaveRequests.endDate, period.startDate),
     )).limit(1);
     const pendingLeave = options.lockSources ? await pendingLeaveQuery.for("update") : await pendingLeaveQuery;
     const pendingOtQuery = executor.select({ id: overtimeRecords.id }).from(overtimeRecords).where(and(
-      eq(overtimeRecords.status, "pending"), gte(overtimeRecords.overtimeDate, period.startDate), lte(overtimeRecords.overtimeDate, period.endDate),
+      inArray(overtimeRecords.employeeId, employeeIds), eq(overtimeRecords.status, "pending"), gte(overtimeRecords.overtimeDate, period.startDate), lte(overtimeRecords.overtimeDate, period.endDate),
     )).limit(1);
     const pendingOt = options.lockSources ? await pendingOtQuery.for("update") : await pendingOtQuery;
     const pendingAdvanceQuery = executor.select({ id: advanceRequests.id }).from(advanceRequests).where(and(
-      eq(advanceRequests.status, "pending"), eq(advanceRequests.requestMonth, `${period.startDate.slice(0, 7)}-01`),
+      inArray(advanceRequests.employeeId, employeeIds), eq(advanceRequests.status, "pending"), eq(advanceRequests.requestMonth, `${period.startDate.slice(0, 7)}-01`),
     )).limit(1);
     const pendingAdvance = options.lockSources ? await pendingAdvanceQuery.for("update") : await pendingAdvanceQuery;
     const pendingAdjustmentQuery = executor.select({ id: payrollAdjustments.id }).from(payrollAdjustments).where(and(
@@ -379,12 +388,12 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
     const blockers: PayrollBlocker[] = [];
     const inputs: PayrollCalculationInput[] = [];
     for (const employeeAssignments of assignmentsByEmployee.values()) {
-      const snapshotRow = payrollEffectiveOn(employeeAssignments.map((row) => row.assignment), period.endDate) ?? employeeAssignments[0]!.assignment;
+      const snapshotRow = payrollEffectiveOn(employeeAssignments.map((row) => row.assignment), earningEnd) ?? employeeAssignments[0]!.assignment;
       const employeeCode = employeeAssignments[0]!.employeeCode;
       const assignment = snapshotRow;
       const employeeId = id(assignment.employeeId);
       const branchId = id(assignment.branchId);
-      const snapshotDate = assignment.effectiveTo && assignment.effectiveTo < period.endDate ? assignment.effectiveTo : period.endDate;
+      const snapshotDate = assignment.effectiveTo && assignment.effectiveTo < earningEnd ? assignment.effectiveTo : earningEnd;
       const required = await Promise.all([
         session.resolveConfiguration(period.shopId, branchId, "STANDARD_WORK_DAYS", snapshotDate, options.lockSources),
         session.resolveConfiguration(period.shopId, branchId, "ABSENCE_RATE", snapshotDate, options.lockSources),
@@ -403,7 +412,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       };
       for (const configuration of required) rememberConfiguration(configuration!, snapshotDate);
       const daysQuery = executor.select().from(workDayRecords).where(and(
-        eq(workDayRecords.employeeId, assignment.employeeId), gte(workDayRecords.workDate, period.startDate), lte(workDayRecords.workDate, period.endDate),
+        eq(workDayRecords.employeeId, assignment.employeeId), gte(workDayRecords.workDate, period.startDate), lte(workDayRecords.workDate, earningEnd),
       )).orderBy(asc(workDayRecords.workDate));
       const days = options.lockSources ? await daysQuery.for("update") : await daysQuery;
       const assignmentRowsOnly = employeeAssignments.map((row) => row.assignment);
@@ -439,12 +448,12 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         employmentStart < period.startDate ? period.startDate : employmentStart,
         employmentEnd > period.endDate ? period.endDate : employmentEnd,
       );
-      const assignmentGaps = employmentDates.filter((date) => !payrollEffectiveOn(assignmentRowsOnly, date));
+      const activeAssignmentDates = employmentDates.filter((date) => date <= earningEnd);
+      const assignmentGaps = activeAssignmentDates.filter((date) => !payrollEffectiveOn(assignmentRowsOnly, date));
       if (assignmentGaps.length > 0) {
         blockers.push({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, detail: `No assignment is effective on ${assignmentGaps[0]}.` });
         continue;
       }
-      const activeAssignmentDates = employmentDates;
       const missingSchedule = activeAssignmentDates.filter((date) => {
         const datedAssignment = payrollEffectiveOn(assignmentRowsOnly, date)!;
         return !payrollEffectiveOn(schedules.filter((row) => row.branchId === datedAssignment.branchId), date);
@@ -502,9 +511,15 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
           absenceConfigurationId: absenceRate.id, lateConfigurationId: lateRate.id });
       }
       if (dailyBlocked) continue;
+      const leaveEvidenceQuery = executor.select({ day: leaveRequestDays, request: leaveRequests }).from(leaveRequestDays)
+        .innerJoin(leaveRequests, eq(leaveRequestDays.leaveRequestId, leaveRequests.id)).where(and(
+          eq(leaveRequests.employeeId, assignment.employeeId), eq(leaveRequests.status, "approved"),
+          gte(leaveRequestDays.leaveDate, period.startDate), lte(leaveRequestDays.leaveDate, earningEnd),
+        ));
+      const leaveEvidence = options.lockSources ? await leaveEvidenceQuery.for("update", { of: [leaveRequestDays, leaveRequests] }) : await leaveEvidenceQuery;
       const overtimeQuery = executor.select().from(overtimeRecords).where(and(
         eq(overtimeRecords.employeeId, assignment.employeeId), eq(overtimeRecords.status, "approved"),
-        gte(overtimeRecords.overtimeDate, period.startDate), lte(overtimeRecords.overtimeDate, period.endDate),
+        gte(overtimeRecords.overtimeDate, period.startDate), lte(overtimeRecords.overtimeDate, earningEnd),
       ));
       const overtimeRows = options.lockSources ? await overtimeQuery.for("update") : await overtimeQuery;
       const overtime = [] as PayrollCalculationInput["overtime"][number][];
@@ -543,6 +558,9 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       const installments = options.lockSources ? await installmentsQuery.for("update", { of: loanInstallments }) : await installmentsQuery;
       const debtsQuery = executor.select().from(debtTransactions).where(and(
         eq(debtTransactions.employeeId, assignment.employeeId), ne(debtTransactions.transactionKind, "reversal"),
+        sql`not exists (select 1 from debt_transactions reversal where reversal.original_transaction_id = ${debtTransactions.id} and reversal.transaction_kind = 'reversal')`,
+        sql`not exists (select 1 from payroll_items pi inner join payroll_records pr on pr.id = pi.payroll_record_id
+          where pi.source_table = 'debt_transactions' and pi.source_id = ${debtTransactions.id} and pr.status = 'locked')`,
         lte(debtTransactions.transactionDate, period.endDate), isNull(debtTransactions.settledAt), isNull(debtTransactions.settledInPayrollRecordId),
       ));
       const debts = options.lockSources ? await debtsQuery.for("update") : await debtsQuery;
@@ -561,6 +579,11 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         socialSecurityRateConfigurationId: required[3]!.id,
         configurationEvidence: [...configurationEvidence.values()],
         workDays: dailyInputs,
+        approvedLeaveEvidence: leaveEvidence.map(({ day, request }) => ({
+          id: id(day.id), requestId: id(request.id), date: day.leaveDate,
+          originalTypeId: id(request.originalLeaveTypeId), approvedTypeId: id(day.leaveTypeId),
+          paid: day.isPaid, deductible: day.isDeductible, quotaConsumed: day.quotaConsumed,
+        })),
         overtime,
         deductions: [
           ...advances.map((row) => ({ id: id(row.id), type: "advance" as const, amount: row.amount, description: "Approved advance", date: row.requestMonth })),
@@ -571,5 +594,43 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       });
     }
     return { inputs, blockers, pendingApprovals: pendingLeave.length + pendingOt.length + pendingAdvance.length + pendingAdjustment.length > 0 };
+  }
+}
+
+
+export type PayrollInputMutation = {
+  employeeId?: number; branchId?: number; shopId?: number; startDate: string; endDate: string;
+};
+
+export class DrizzlePayrollInputRepository {
+  async findDebtSettlement(executor: DatabaseExecutor, debtId: number): Promise<{ payrollRecordId: number; settledAt: Date } | undefined> {
+    const [row] = await executor.select({ payrollRecordId: payrollRecords.id, settledAt: payrollRecords.lockedAt })
+      .from(payrollItems).innerJoin(payrollRecords, eq(payrollItems.payrollRecordId, payrollRecords.id))
+      .where(and(eq(payrollItems.sourceTable, "debt_transactions"), eq(payrollItems.sourceId, debtId), eq(payrollRecords.status, "locked"))).limit(1);
+    return row?.settledAt ? { payrollRecordId: row.payrollRecordId, settledAt: row.settledAt } : undefined;
+  }
+  session(executor: DatabaseExecutor): PayrollRepositorySession { return createPayrollRepositorySession(executor); }
+  async findLockedInputPeriod(executor: DatabaseExecutor, target: PayrollInputMutation): Promise<boolean> {
+    const conditions = [eq(payrollPeriods.status, "locked"), lte(payrollPeriods.startDate, target.endDate), gte(payrollPeriods.endDate, target.startDate)];
+    if (target.shopId !== undefined) conditions.push(eq(payrollPeriods.shopId, target.shopId));
+    if (target.branchId !== undefined) conditions.push(sql`exists (select 1 from branches b where b.id = ${target.branchId} and b.shop_id = ${payrollPeriods.shopId})`);
+    if (target.employeeId !== undefined) conditions.push(sql`(
+      exists (select 1 from payroll_records r where r.payroll_period_id = ${payrollPeriods.id} and r.employee_id = ${target.employeeId})
+      or exists (select 1 from employment_assignments a inner join branches b on b.id = a.branch_id
+        where a.employee_id = ${target.employeeId} and b.shop_id = ${payrollPeriods.shopId}
+        and a.effective_from <= ${target.endDate} and (a.effective_to is null or a.effective_to >= ${target.startDate}))
+    )`);
+    const rows = await executor.select({ id: payrollPeriods.id }).from(payrollPeriods).where(and(...conditions)).limit(1);
+    return rows.length > 0;
+  }
+
+  async findProjectionPeriod(executor: DatabaseExecutor, employeeId: number, date: string): Promise<PayrollPeriodRecord | null> {
+    const [row] = await executor.select({ period: payrollPeriods }).from(payrollPeriods)
+      .innerJoin(branches, eq(branches.shopId, payrollPeriods.shopId))
+      .innerJoin(employmentAssignments, eq(employmentAssignments.branchId, branches.id))
+      .where(and(eq(employmentAssignments.employeeId, employeeId), eq(employmentAssignments.isPrimary, true),
+        lte(employmentAssignments.effectiveFrom, date), or(isNull(employmentAssignments.effectiveTo), gte(employmentAssignments.effectiveTo, date)),
+        lte(payrollPeriods.startDate, date), gte(payrollPeriods.endDate, date))).limit(1);
+    return row ? toPeriod(row.period) : null;
   }
 }

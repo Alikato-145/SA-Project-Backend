@@ -47,6 +47,18 @@ describe("payroll calculator", () => {
     expect(result.items.find((item) => item.itemType === "social_security")?.amount).toBe("200.00");
   });
 
+  test("never deducts approved leave even when historical flags claim unpaid or late", () => {
+    const input = fixture();
+    input.workDays = [{ id: "leave-1", date: "2026-09-03", status: "leave", lateMinutes: 30, deductible: true }];
+    input.approvedLeaveEvidence = [{ id: "leave-day", requestId: "request", date: "2026-09-03", originalTypeId: "1", approvedTypeId: "2", paid: false, deductible: true, quotaConsumed: "1.00" }];
+    const result = calculatePayroll(input);
+    expect(result.items.filter((item) => ["absence", "sick_unpaid", "lateness"].includes(item.itemType))).toEqual([]);
+    expect(result.items.find((item) => item.sourceTable === "leave_request_days")).toMatchObject({ sourceId: "leave-day", amount: "0.00" });
+    expect(result.items.find((item) => item.sourceTable === "work_day_records")).toMatchObject({
+      sourceId: "leave-1", amount: "0.00", description: "Attendance leave; late_minutes=30; deductible=true",
+    });
+  });
+
   test("uses only explicitly supplied approved overtime inputs", () => {
     const input = fixture();
     input.overtime = [];

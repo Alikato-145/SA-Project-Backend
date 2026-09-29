@@ -147,3 +147,9 @@ databaseTest("database enforces uniqueness, clock order, and stores the branch s
     await pool.end();
   }
 });
+
+test("attendance rejects invalid calendar dates and clock-in on a different Bangkok business date",async()=>{
+ const repository=makeRepository();const service=new AttendanceService(repository,access(),unlocked());
+ for(const command of [{...record,workDate:"2026-02-30"},{...record,clockInAt:new Date("2026-09-22T18:00:00Z"),clockOutAt:null}])await expect(service.createManualWorkDay({accountId:7},command)).rejects.toMatchObject({code:"INVALID_ATTENDANCE"});
+ expect(repository.insertCalls).toBe(0);
+});

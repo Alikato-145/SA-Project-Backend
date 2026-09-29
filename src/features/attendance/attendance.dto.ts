@@ -1,4 +1,5 @@
-export type AttendanceActor = { accountId: number };
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type AttendanceActor = OperationActor & { accountId: number };
 export type WorkDayStatus = "present" | "late" | "absent" | "leave" | "weekly_holiday" | "public_holiday";
 
 export type CreateManualWorkDayCommand = {

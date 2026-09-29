@@ -1,9 +1,10 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { and, eq, gte, lte } from "drizzle-orm";
-import { db } from "../../core/db/client";
+import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import { overtimeApprovalActions, overtimeRecords } from "./overtime.schema";
 import type { OvertimeRecord, SubmitOvertimeCommand } from "./overtime.dto";
 
-export class OvertimeError extends Error {
+export class OvertimeError extends ApplicationError {
   constructor(public readonly code:
     | "INVALID_OVERTIME_AMOUNT" | "INVALID_OVERTIME_DATE" | "OVERTIME_CONTEXT_INVALID"
     | "OVERTIME_ALREADY_EXISTS" | "OVERTIME_NOT_FOUND" | "OVERTIME_NOT_PENDING"
@@ -29,9 +30,12 @@ const pgCode = (error: unknown) => {
   return value?.code ?? value?.cause?.code;
 };
 export class DrizzleOvertimeRepository implements OvertimeRepository {
+ async findById(id:number) { return operationExecutor().query.overtimeRecords.findFirst({where:eq(overtimeRecords.id,id)}); }
+ async history(id:number) { return operationExecutor().query.overtimeApprovalActions.findMany({where:eq(overtimeApprovalActions.overtimeRecordId,id),orderBy:[overtimeApprovalActions.actedAt,overtimeApprovalActions.id]}); }
+
   async withTransaction<T>(work: (session: OvertimeSession) => Promise<T>): Promise<T> {
     try {
-      return await db.transaction(async (tx) => work({
+      return await operationTransaction(async (tx) => work({
         transaction: tx,
         insert: async (command, actorId) => {
           const [row] = await tx.insert(overtimeRecords).values({
@@ -66,10 +70,10 @@ export class DrizzleOvertimeRepository implements OvertimeRepository {
     }
   }
   async listByEmployee(employeeId: number): Promise<OvertimeRecord[]> {
-    return db.query.overtimeRecords.findMany({ where: eq(overtimeRecords.employeeId, employeeId) });
+    return operationExecutor().query.overtimeRecords.findMany({ where: eq(overtimeRecords.employeeId, employeeId) });
   }
   async findApproved(employeeId: number, startDate: string, endDate: string): Promise<OvertimeRecord[]> {
-    return db.query.overtimeRecords.findMany({ where: and(
+    return operationExecutor().query.overtimeRecords.findMany({ where: and(
       eq(overtimeRecords.employeeId, employeeId),
       eq(overtimeRecords.status, "approved"),
       gte(overtimeRecords.overtimeDate, startDate),

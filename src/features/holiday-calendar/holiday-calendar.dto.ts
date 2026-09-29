@@ -1,4 +1,5 @@
-export type HolidayActor = { accountId: number };
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type HolidayActor = OperationActor & { accountId: number };
 
 export type CreateHolidayCommand = {
   shopId: number;

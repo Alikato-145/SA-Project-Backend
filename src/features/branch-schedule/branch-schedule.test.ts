@@ -166,3 +166,11 @@ describe("BranchScheduleService", () => {
     });
   });
 });
+
+test("schedule changes create successors and reject edits to the old effective start",async()=>{
+ const repository=makeRepository();let successor:any;repository.createSuccessor=async(old,command)=>{successor={old,command};return {...schedule,...command,id:3};};
+ const service=new BranchScheduleService(repository,{async assertCanManageBranch(){}});
+ await expect(service.updateSchedule({accountId:7},1,{effectiveFrom:"2026-09-01",workStartTime:"10:00:00"})).rejects.toMatchObject({code:"INVALID_SCHEDULE"});
+ expect((await service.updateSchedule({accountId:7},1,{effectiveFrom:"2026-09-16",workStartTime:"10:00:00"})).id).toBe(3);
+ expect(successor.old.workStartTime).toBe("09:00:00");expect(successor.command.workStartTime).toBe("10:00:00");expect(repository.insertCalls).toBe(0);
+});

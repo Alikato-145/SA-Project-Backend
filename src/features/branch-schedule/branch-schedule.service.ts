@@ -1,3 +1,4 @@
+import { realDate } from "../../shared/operation-validation";
 import type {
   ApplicableSchedule,
   BranchSchedule,
@@ -13,6 +14,7 @@ import {
 } from "./branch-schedule.repository";
 
 export type BranchScheduleAccess = {
+  assertCanReadBranch?(actor: ScheduleActor,branchId:number):Promise<void>;
   assertCanManageBranch(actor: ScheduleActor, branchId: number): Promise<void>;
 };
 
@@ -39,6 +41,10 @@ export class BranchScheduleService {
     const existing = await this.requireSchedule(id);
     await this.access.assertCanManageBranch(actor, existing.branchId);
     this.assertSchedule({ ...existing, ...command });
+    if(this.repository.createSuccessor) {
+      if(!command.effectiveFrom || command.effectiveFrom<=existing.effectiveFrom || (existing.effectiveTo && command.effectiveFrom>existing.effectiveTo))throw new BranchScheduleError("INVALID_SCHEDULE");
+      return this.repository.createSuccessor(existing,{...existing,...command});
+    }
     return (await this.repository.updateSchedule(id, command)) ?? this.notFound();
   }
 
@@ -47,8 +53,8 @@ export class BranchScheduleService {
     branchId: number,
     workDate?: string,
   ): Promise<BranchSchedule[]> {
-    await this.access.assertCanManageBranch(actor, branchId);
-    return this.repository.listSchedules(branchId, workDate);
+    await (this.access.assertCanReadBranch ?? this.access.assertCanManageBranch)(actor, branchId);
+    if(workDate)realDate(workDate);return this.repository.listSchedules(branchId, workDate);
   }
 
   async findApplicableSchedule(
@@ -56,8 +62,8 @@ export class BranchScheduleService {
     branchId: number,
     workDate: string,
   ): Promise<ApplicableSchedule> {
-    await this.access.assertCanManageBranch(actor, branchId);
-    const override = await this.repository.findOverride(branchId, workDate);
+    await (this.access.assertCanReadBranch ?? this.access.assertCanManageBranch)(actor, branchId);
+    realDate(workDate);const override = await this.repository.findOverride(branchId, workDate);
     if (override) return { kind: "override", override };
     const schedule = await this.repository.findApplicableSchedule(branchId, workDate);
     return schedule ? { kind: "schedule", schedule } : { kind: "none" };
@@ -72,12 +78,22 @@ export class BranchScheduleService {
     return this.repository.upsertOverride({ ...command, createdByUserAccountId: actor.accountId });
   }
 
+  async getApplicableSchedule(branchId:number,workDate:string):Promise<ApplicableSchedule> {
+    const override=await this.repository.findOverride(branchId,workDate);
+    if(override)return {kind:"override",override};
+    const schedule=await this.repository.findApplicableSchedule(branchId,workDate);
+    return schedule ? {kind:"schedule",schedule} : {kind:"none"};
+  }
   private async requireSchedule(id: number) {
     const schedule = await this.repository.findScheduleById(id);
     return schedule ?? this.notFound();
   }
 
   private assertSchedule(command: CreateBranchScheduleCommand) {
+    realDate(command.effectiveFrom);if(command.effectiveTo)realDate(command.effectiveTo);
+    const time=/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/;
+    if(!time.test(command.workStartTime)||!time.test(command.standardCloseTime))throw new BranchScheduleError("INVALID_SCHEDULE");
+
     if (
       command.lateGraceMinutes < 0 ||
       command.standardCloseTime <= command.workStartTime ||
@@ -88,6 +104,7 @@ export class BranchScheduleService {
   }
 
   private assertOverride(command: UpsertScheduleOverrideCommand) {
+    realDate(command.scheduleDate);
     if (command.isClosed && (command.workStartTime || command.closeTime)) {
       throw new BranchScheduleError("INVALID_OVERRIDE_HOURS");
     }

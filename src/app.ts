@@ -1,3 +1,32 @@
+import { createEmployeeOperationContextService } from "./features/employee/employee.operation-context.service";
+import { createPayrollInputService } from "./features/payroll/payroll.service";
+import { DrizzlePayrollInputRepository } from "./features/payroll/payroll.repository";
+import { AttendanceLeaveEffect } from "./features/attendance/attendance-leave-effect.service";
+import { DrizzleAttendanceLeaveEffectRepository } from "./features/attendance/attendance-leave-effect.repository";
+import { createAttendanceRuntimeService } from "./features/attendance/attendance.runtime.service";
+import { AttendanceController } from "./features/attendance/attendance.controller";
+import { createAttendanceRoutes } from "./features/attendance/attendance.routes";
+import { createBranchScheduleRuntimeService } from "./features/branch-schedule/branch-schedule.runtime.service";
+import { BranchScheduleController } from "./features/branch-schedule/branch-schedule.controller";
+import { createBranchScheduleRoutes } from "./features/branch-schedule/branch-schedule.routes";
+import { createHolidayCalendarRuntimeService } from "./features/holiday-calendar/holiday-calendar.runtime.service";
+import { HolidayCalendarController } from "./features/holiday-calendar/holiday-calendar.controller";
+import { createHolidayCalendarRoutes } from "./features/holiday-calendar/holiday-calendar.routes";
+import { createLeaveRuntimeService } from "./features/leave/leave.runtime.service";
+import { LeaveController } from "./features/leave/leave.controller";
+import { createLeaveRoutes } from "./features/leave/leave.routes";
+import { createOvertimeRuntimeService } from "./features/overtime/overtime.runtime.service";
+import { OvertimeController } from "./features/overtime/overtime.controller";
+import { createOvertimeRoutes } from "./features/overtime/overtime.routes";
+import { createAdvanceRuntimeService } from "./features/advance/advance.runtime.service";
+import { AdvanceController } from "./features/advance/advance.controller";
+import { createAdvanceRoutes } from "./features/advance/advance.routes";
+import { createLoanRuntimeService } from "./features/loan/loan.runtime.service";
+import { LoanController } from "./features/loan/loan.controller";
+import { createLoanRoutes } from "./features/loan/loan.routes";
+import { createDebtRuntimeService } from "./features/debt/debt.runtime.service";
+import { DebtController } from "./features/debt/debt.controller";
+import { createDebtRoutes } from "./features/debt/debt.routes";
 import Elysia from "elysia";
 import { authConfig } from "./core/config/auth.config";
 import { createRequestAuthenticator } from "./core/auth/request-authenticator";
@@ -221,6 +250,20 @@ const concreteReportService = () => {
   return createReportService({ rootExecutor: db, actions: audit.actions, cipher: createBankAccountCipher(bankKeyringFromEnv(process.env)) });
 };
 
+export const concreteOperationsOptions = () => {
+ const context=createEmployeeOperationContextService();
+ const runtime={context,payroll:createPayrollInputService(new DrizzlePayrollInputRepository(),new DrizzlePayrollInputProvider()),domain:createAuditService(db,auditRepository).domain};
+ const schedule=createBranchScheduleRuntimeService(runtime);
+ const holiday=createHolidayCalendarRuntimeService(runtime);
+ const attendance=createAttendanceRuntimeService(runtime,schedule,holiday);
+ const leaveEffect=new AttendanceLeaveEffect(new DrizzleAttendanceLeaveEffectRepository(),{branchAtDate:async(id,date)=>(await context.context(id,date)).branchId});
+ return {
+  authenticate:createAuthenticator(),allowedOrigins:authConfig.allowedOrigins,
+  attendance,schedule,holiday,leave:createLeaveRuntimeService(runtime,leaveEffect),
+  overtime:createOvertimeRuntimeService(runtime,schedule,holiday,attendance),advance:createAdvanceRuntimeService(runtime,attendance),loan:createLoanRuntimeService(runtime),debt:createDebtRuntimeService(runtime),
+ };
+};
+
 export const createApp = (
   payrollOptions: PayrollRoutesOptions = concretePayrollOptions(),
   userAccountOptions: UserAccountRoutesOptions = concreteUserAccountOptions(),
@@ -228,6 +271,7 @@ export const createApp = (
   userAccountAdminOptions: UserAccountAdminRoutesOptions = concreteUserAccountAdminOptions(),
   roleOptions: RoleRoutesOptions = concreteRoleOptions(),
   employeeOptions: A3EmployeeRoutesOptions = concreteEmployeeOptions(),
+  operationsOptions: ReturnType<typeof concreteOperationsOptions> = concreteOperationsOptions(),
 ) =>
   new Elysia({ name: "haris-payroll" })
     .get("/", () => success({ service: "haris-payroll", status: "ok" }))
@@ -239,7 +283,15 @@ export const createApp = (
     .use(createOperationsRoutes({ authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
     .use(createPayrollRoutes(payrollOptions))
     .use(createPayslipRoutes({ service: concretePayslipService(), authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
-    .use(createReportRoutes({ service: concreteReportService(), authenticate: createAuthenticator() }));
+    .use(createReportRoutes({ service: concreteReportService(), authenticate: createAuthenticator() }))
+    .use(createAttendanceRoutes({...operationsOptions,controller:new AttendanceController(operationsOptions.attendance)}))
+    .use(createBranchScheduleRoutes({...operationsOptions,controller:new BranchScheduleController(operationsOptions.schedule)}))
+    .use(createHolidayCalendarRoutes({...operationsOptions,controller:new HolidayCalendarController(operationsOptions.holiday)}))
+    .use(createLeaveRoutes({...operationsOptions,controller:new LeaveController(operationsOptions.leave)}))
+    .use(createOvertimeRoutes({...operationsOptions,controller:new OvertimeController(operationsOptions.overtime)}))
+    .use(createAdvanceRoutes({...operationsOptions,controller:new AdvanceController(operationsOptions.advance)}))
+    .use(createLoanRoutes({...operationsOptions,controller:new LoanController(operationsOptions.loan)}))
+    .use(createDebtRoutes({...operationsOptions,controller:new DebtController(operationsOptions.debt)}));
 
 // Person C owns this composition root. Feature owners export route plugins;
 // registrations are added here without moving feature logic into app.ts.

@@ -1,4 +1,5 @@
-export type ScheduleActor = {
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type ScheduleActor = OperationActor & {
   accountId: number;
 };
 

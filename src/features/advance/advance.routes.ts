@@ -1,20 +1,15 @@
-import Elysia, { t } from "elysia";
-import type { AdvanceActor } from "./advance.dto";
+import { t } from "elysia";
+import { operationTransport, type OperationTransportOptions } from "../../core/middleware/operation-transport";
+import { operationId as id, operationDate as date, operationMoney as money } from "../../shared/operation-validation";
+const object=(fields:any)=>t.Object(fields,{additionalProperties:false});
+const params=object({id});
+const employeeQuery=object({employee_id:id});
+const text=t.Optional(t.String({maxLength:1000}));
+const nullableText=t.Optional(t.Union([t.String({maxLength:1000}),t.Null()]));
 import { AdvanceController } from "./advance.controller";
-const id = t.Number({ minimum: 1 });
-export const createAdvanceRoutes = (controller: AdvanceController,
-  actorFromContext: (context: unknown) => AdvanceActor | Promise<AdvanceActor>) =>
-  new Elysia({ name: "advance" })
-    .get("/advance-requests", async (context) =>
-      controller.list(await actorFromContext(context), context.query.employee_id),
-      { query: t.Object({ employee_id: t.Numeric({ minimum: 1 }) }) })
-    .post("/advance-requests", async (context) =>
-      controller.submit(await actorFromContext(context), context.body),
-      { body: t.Object({ employee_id: id, amount: t.String({ pattern: "^\\d+(?:\\.\\d{1,2})?$" }) }) })
-    .post("/advance-requests/:id/approve", async (context) =>
-      controller.approve(await actorFromContext(context), context.params.id),
-      { params: t.Object({ id: t.Numeric({ minimum: 1 }) }) })
-    .post("/advance-requests/:id/reject", async (context) =>
-      controller.reject(await actorFromContext(context), context.params.id, context.body),
-      { params: t.Object({ id: t.Numeric({ minimum: 1 }) }),
-        body: t.Object({ note: t.Optional(t.String()) }) });
+export const createAdvanceRoutes=(options:OperationTransportOptions & {controller:AdvanceController})=> operationTransport("b5-advance",options)
+
+ .get("/advance-requests",({actor,query})=>options.controller.list(actor,query.employee_id),{query:employeeQuery})
+ .post("/advance-requests",({actor,body})=>options.controller.submit(actor,body),{body:object({employee_id:id,amount:money})})
+ .post("/advance-requests/:id/approve",({actor,params})=>options.controller.approve(actor,params.id),{params})
+ .post("/advance-requests/:id/reject",({actor,params,body})=>options.controller.reject(actor,params.id,body),{params,body:object({note:text})});

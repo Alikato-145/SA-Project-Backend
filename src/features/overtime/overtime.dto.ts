@@ -1,4 +1,5 @@
-export type OvertimeActor = {
+import type { OperationActor } from "../../core/auth/operation-actor";
+export type OvertimeActor = OperationActor & {
   accountId: number;
   scope: "self" | "department" | "branch" | "all";
 };
