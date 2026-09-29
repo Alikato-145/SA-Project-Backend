@@ -61,7 +61,6 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     await client.query("insert into overtime_records(employee_id,overtime_date,overtime_type,hours,requested_by_user_account_id) values($1,$2,'hourly','1',$3)", [otherEmployee, day(1), owner]);
     await client.query("insert into advance_requests(employee_id,request_month,amount,requested_by_user_account_id) values($1,$2,'1.00',$3)", [otherEmployee, day(1), owner]);
     await client.query("COMMIT");
-    await Bun.write("/private/tmp/haris-b5-demo.json", JSON.stringify({ owner_username: `b5-owner-${key}`, manager_username: `b5-manager-${key}`, employee_username: `b5-self-${key}`, password: fixturePassword, owner_id: owner, manager_id: manager, employee_account_id: self, shop_id: shop, branch_a: branchA, branch_b: branchB, employee_id: employee, leave_type_id: leaveType, debt_type_id: debtType, start_date: day(1), end_date: day(lastDay) }, null, 2));
 
     const { createApp } = await import("../app");
     const app = createApp();
