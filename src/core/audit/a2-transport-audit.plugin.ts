@@ -12,7 +12,14 @@ export interface RegisteredA2Action {
 }
 
 const sentinel = (value: string) => () => value;
-const capturedId = (index: number) => (match: RegExpMatchArray) => match[index] ?? "unknown";
+const capturedId = (index: number) => (match: RegExpMatchArray) => {
+  const candidate = match[index];
+  return candidate &&
+    /^[1-9]\d*$/.test(candidate) &&
+    Number.isSafeInteger(Number(candidate))
+    ? candidate
+    : "unknown";
+};
 
 export const A2_ACTION_REGISTRY: readonly RegisteredA2Action[] = [
   { method: "GET", pattern: /^\/api\/v1\/shops\/?$/, actionBase: "organization.shop.list", tableName: "shops", recordId: sentinel("collection") },

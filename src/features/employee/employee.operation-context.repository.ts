@@ -7,7 +7,7 @@ export const employeeOperationContextRepository = {
  async datedAssignment(employeeId: number, date: string) {
   const [row] = await operationExecutor().select({ employeeId: employmentAssignments.employeeId, branchId: employmentAssignments.branchId, departmentId: employmentAssignments.departmentId, baseSalary: employmentAssignments.baseSalary, shopId: branches.shopId })
    .from(employmentAssignments).innerJoin(branches, eq(branches.id, employmentAssignments.branchId)).where(and(eq(employmentAssignments.employeeId,employeeId), lte(employmentAssignments.effectiveFrom,date), or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,date))));
-  return row;
+  return row as typeof row | undefined;
  },
  async branchShop(branchId: number) { return (await operationExecutor().query.branches.findFirst({ where: eq(branches.id,branchId) }))?.shopId; },
  async shopBranches(shopId: number) { return (await operationExecutor().select({id:branches.id}).from(branches).where(eq(branches.shopId,shopId))).map(row=>row.id); },
