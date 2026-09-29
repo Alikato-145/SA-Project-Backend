@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../../core/db/client";
 import {
   leaveApprovalActions,
@@ -7,7 +7,7 @@ import {
   leaveRequests,
   leaveTypes,
 } from "./leave.schema";
-import type { LeaveDay, LeaveQuota, LeaveRequest, LeaveType, SubmitLeaveCommand } from "./leave.dto";
+import type { LeaveDay, LeaveQuota, LeaveRequest, LeaveType, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
 
 export class LeaveError extends Error {
   constructor(public readonly code:
@@ -20,7 +20,7 @@ export class LeaveError extends Error {
   }
 }
 
-type Action = "submitted" | "approved" | "rejected" | "type_changed";
+type Action = "submitted" | "approved" | "rejected" | "type_changed" | "overridden";
 export type LeaveSession = {
   /** Passed to Person C's attendance adapter so its write shares this transaction. */
   transaction: unknown;
@@ -30,6 +30,8 @@ export type LeaveSession = {
   insertRequest(command: SubmitLeaveCommand, requestedDays: number, actorId: number): Promise<LeaveRequest>;
   insertDays(requestId: number, leaveTypeId: number, dates: string[], deductible: boolean): Promise<void>;
   findRequest(id: number): Promise<LeaveRequest | undefined>;
+  updatePendingRequest(id: number, command: UpdateLeaveCommand, requestedDays: number): Promise<LeaveRequest>;
+  replaceDays(requestId: number, leaveTypeId: number, dates: string[], deductible: boolean): Promise<void>;
   findDays(requestId: number): Promise<LeaveDay[]>;
   findQuota(employeeId: number, typeId: number, year: number): Promise<LeaveQuota | undefined>;
   updateQuota(id: number, usedDays: string): Promise<void>;
@@ -40,6 +42,7 @@ export type LeaveSession = {
 
 export type LeaveRepository = {
   withTransaction<T>(work: (session: LeaveSession) => Promise<T>): Promise<T>;
+  listActiveTypes(): Promise<LeaveType[]>;
   listByEmployee(employeeId: number): Promise<LeaveRequest[]>;
   findApprovedDays(employeeId: number, startDate: string, endDate: string): Promise<LeaveDay[]>;
 };
@@ -93,6 +96,25 @@ export class DrizzleLeaveRepository implements LeaveRepository {
             const [row] = await tx.select().from(leaveRequests).where(eq(leaveRequests.id, id)).for("update");
             return row;
           },
+          updatePendingRequest: async (id, command, requestedDays) => {
+            const [row] = await tx.update(leaveRequests).set({
+              originalLeaveTypeId: command.leaveTypeId,
+              startDate: command.startDate,
+              endDate: command.endDate,
+              requestedDays: String(requestedDays),
+              reason: command.reason ?? null,
+              isRetroactive: command.isRetroactive ?? false,
+              updatedAt: new Date(),
+            }).where(eq(leaveRequests.id, id)).returning();
+            return row;
+          },
+          replaceDays: async (requestId, typeId, dates, deductible) => {
+            await tx.delete(leaveRequestDays).where(eq(leaveRequestDays.leaveRequestId, requestId));
+            await tx.insert(leaveRequestDays).values(dates.map((date) => ({
+              leaveRequestId: requestId, leaveDate: date, leaveTypeId: typeId,
+              dayAmount: "1", isPaid: !deductible, isDeductible: deductible, quotaConsumed: "0",
+            })));
+          },
           findDays: async (id) => tx.query.leaveRequestDays.findMany({ where: eq(leaveRequestDays.leaveRequestId, id) }),
           findQuota: async (employeeId, typeId, year) => {
             const [row] = await tx.select().from(leaveQuotas).where(and(
@@ -131,6 +153,18 @@ export class DrizzleLeaveRepository implements LeaveRepository {
       if (pgCode(error) === "23P01") throw new LeaveError("LEAVE_DATE_OVERLAP");
       throw error;
     }
+  }
+
+  async listActiveTypes(): Promise<LeaveType[]> {
+    return db.select({
+      id: leaveTypes.id,
+      nameTh: leaveTypes.nameTh,
+      quotaType: leaveTypes.quotaType,
+      isDeductible: leaveTypes.isDeductible,
+      requiresDocument: leaveTypes.requiresDocument,
+      allowExceed: leaveTypes.allowExceed,
+      isActive: leaveTypes.isActive,
+    }).from(leaveTypes).where(eq(leaveTypes.isActive, true)).orderBy(asc(leaveTypes.nameTh));
   }
 
   async listByEmployee(employeeId: number): Promise<LeaveRequest[]> {

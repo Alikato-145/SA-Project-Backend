@@ -80,6 +80,19 @@ describe("public error boundary", () => {
     expect(result.body.error.code).toBe("STATE_CONFLICT");
   });
 
+  test("allows an explicitly safe public message without exposing its cause", () => {
+    const result = toPublicErrorResult(
+      new ApplicationError("STATE_CONFLICT", {
+        publicMessage: "ช่วงวันที่ลาซ้อนกับคำขอเดิม",
+        cause: new Error("internal leave query detail"),
+      }),
+      "request-leave-overlap",
+    );
+
+    expect(result.body.error.message).toBe("ช่วงวันที่ลาซ้อนกับคำขอเดิม");
+    expect(JSON.stringify(result)).not.toContain("internal leave query detail");
+  });
+
   test("maps duplicate organization codes to a stable conflict", () => {
     expect(
       toPublicErrorResult(

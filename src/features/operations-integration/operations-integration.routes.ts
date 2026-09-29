@@ -41,10 +41,27 @@ import { OvertimeService } from "../overtime/overtime.service";
 import { DrizzleOperationsScopeRepository } from "./operations-integration.repository";
 import { OperationsIntegrationService } from "./operations-integration.service";
 
+const leavePublicMessageByCode: Readonly<Record<string, string>> = {
+  INVALID_LEAVE: "ข้อมูลหรือช่วงวันที่ลาไม่ถูกต้อง",
+  LEAVE_ALREADY_DECIDED: "คำขอลานี้ถูกพิจารณาแล้ว",
+  LEAVE_DATE_OVERLAP: "ช่วงวันที่ลาซ้อนกับคำขอเดิมที่ยังรอดำเนินการหรือได้รับอนุมัติแล้ว",
+  LEAVE_QUOTA_EXCEEDED: "สิทธิ์ลาคงเหลือไม่เพียงพอสำหรับช่วงวันที่เลือก",
+  LEAVE_QUOTA_FROZEN: "สิทธิ์ลาของปีนี้ถูกปิดแล้ว",
+  LEAVE_TYPE_UNAVAILABLE: "ประเภทการลานี้ไม่พร้อมใช้งาน",
+  SUPERVISOR_APPROVAL_LIMIT: "หัวหน้าแผนกอนุมัติคำขอลาได้ไม่เกิน 3 วัน",
+};
+
 const mappedError = (error: unknown) => {
   if (isApplicationError(error)) return error;
   const code = typeof error === "object" && error !== null && "code" in error
     ? String((error as { code: unknown }).code) : "";
+  const publicMessage = leavePublicMessageByCode[code];
+  if (publicMessage) {
+    return new ApplicationError(code === "INVALID_LEAVE" || code === "LEAVE_TYPE_UNAVAILABLE" ? "VALIDATION_ERROR" : "STATE_CONFLICT", {
+      cause: error,
+      publicMessage,
+    });
+  }
   if (code === "OUT_OF_SCOPE") return new ApplicationError("FORBIDDEN_SCOPE");
   if (code.includes("NOT_FOUND")) return new ApplicationError("RESOURCE_NOT_FOUND");
   if (code.includes("LOCKED")) return new ApplicationError("PAYROLL_PERIOD_LOCKED");

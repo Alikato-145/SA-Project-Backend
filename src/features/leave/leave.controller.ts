@@ -1,5 +1,5 @@
 import type { LeaveActor } from "./leave.dto";
-import { toLeaveResponse } from "./leave.mapper";
+import { toLeaveResponse, toLeaveTypeResponse } from "./leave.mapper";
 import { LeaveService } from "./leave.service";
 
 export class LeaveController {
@@ -17,10 +17,25 @@ export class LeaveController {
   async approve(actor: LeaveActor, id: number, body: { final_leave_type_id?: number }) {
     return toLeaveResponse(await this.service.approveLeave(actor, id, body.final_leave_type_id));
   }
+  async update(actor: LeaveActor, id: number, body: {
+    leave_type_id: number; start_date: string; end_date: string;
+    reason?: string; is_retroactive?: boolean;
+  }) {
+    return toLeaveResponse(await this.service.updateLeave(actor, id, {
+      leaveTypeId: body.leave_type_id,
+      startDate: body.start_date,
+      endDate: body.end_date,
+      reason: body.reason,
+      isRetroactive: body.is_retroactive,
+    }));
+  }
   async reject(actor: LeaveActor, id: number, body: { remark?: string }) {
     return toLeaveResponse(await this.service.rejectLeave(actor, id, body.remark));
   }
   async list(actor: LeaveActor, employeeId: number) {
     return (await this.service.listRequests(actor, employeeId)).map(toLeaveResponse);
+  }
+  async listTypes(actor: LeaveActor) {
+    return (await this.service.listLeaveTypes(actor)).map(toLeaveTypeResponse);
   }
 }

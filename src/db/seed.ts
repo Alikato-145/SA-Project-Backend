@@ -12,7 +12,7 @@ import { debtTypes } from "../features/debt/debt.schema";
 import { employees } from "../features/employee/employee.schema";
 import { employmentAssignments } from "../features/employment-assignment/employment-assignment.schema";
 import { employeeWeeklyHolidays } from "../features/employee-weekly-holiday/employee-weekly-holiday.schema";
-import { leaveTypes } from "../features/leave/leave.schema";
+import { leaveQuotas, leaveTypes } from "../features/leave/leave.schema";
 import { payrollConfigurations, payrollPeriods } from "../features/payroll/payroll.schema";
 import { positions } from "../features/position/position.schema";
 import {
@@ -351,10 +351,23 @@ const seed = async () => {
       }).onConflictDoNothing();
     }
 
-    await transaction.insert(leaveTypes).values({
-      code: "DEMO_PERSONAL", nameTh: "ลากิจตัวอย่าง", quotaType: "none", quotaDays: null,
-      isDeductible: false,
-    }).onConflictDoNothing();
+    const leaveTypeSeeds = [
+      { code: "DEMO_SICK", nameTh: "ลาป่วย", quotaType: "fixed", quotaDays: "30.00", isDeductible: false, requiresDocument: false },
+      { code: "DEMO_PERSONAL", nameTh: "ลากิจ", quotaType: "fixed", quotaDays: "3.00", isDeductible: false, requiresDocument: false },
+      { code: "DEMO_ANNUAL", nameTh: "ลาพักร้อน", quotaType: "fixed", quotaDays: "6.00", isDeductible: false, requiresDocument: false },
+      { code: "DEMO_UNPAID", nameTh: "ลาไม่รับค่าจ้าง", quotaType: "none", quotaDays: null, isDeductible: true, requiresDocument: false },
+    ] as const;
+    for (const leaveType of leaveTypeSeeds) {
+      await transaction.insert(leaveTypes).values(leaveType).onConflictDoUpdate({
+        target: leaveTypes.code,
+        set: { nameTh: leaveType.nameTh, quotaType: leaveType.quotaType, quotaDays: leaveType.quotaDays, isDeductible: leaveType.isDeductible, requiresDocument: leaveType.requiresDocument, isActive: true },
+      });
+      if (leaveType.quotaDays) {
+        const [type] = await transaction.select({ id: leaveTypes.id }).from(leaveTypes).where(eq(leaveTypes.code, leaveType.code)).limit(1);
+        if (!type) throw new Error(`Leave type seed failed: ${leaveType.code}`);
+        await transaction.insert(leaveQuotas).values({ employeeId: demoEmployeeId, leaveTypeId: type.id, quotaYear: year, entitledDays: leaveType.quotaDays, usedDays: "0" }).onConflictDoNothing();
+      }
+    }
     await transaction.insert(debtTypes).values({
       code: "DEMO_FOOD", nameTh: "ค่าอาหารตัวอย่าง", description: "ข้อมูลสำหรับทดสอบ C4",
     }).onConflictDoNothing();

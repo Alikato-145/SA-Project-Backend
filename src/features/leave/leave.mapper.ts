@@ -1,4 +1,4 @@
-import type { LeaveRequest, LeaveResponse } from "./leave.dto";
+import type { LeaveRequest, LeaveResponse, LeaveType, LeaveTypeResponse } from "./leave.dto";
 
 export const toLeaveResponse = (value: LeaveRequest): LeaveResponse => ({
   id: value.id,
@@ -10,4 +10,11 @@ export const toLeaveResponse = (value: LeaveRequest): LeaveResponse => ({
   requestedDays: value.requestedDays,
   status: value.status,
   reason: value.reason,
+  isRetroactive: value.isRetroactive,
+});
+
+export const toLeaveTypeResponse = (value: LeaveType): LeaveTypeResponse => ({
+  id: value.id,
+  nameTh: value.nameTh,
+  requiresDocument: value.requiresDocument,
 });
