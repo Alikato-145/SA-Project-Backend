@@ -59,6 +59,7 @@ export const isJsonContentType = (contentType: string | null): boolean => {
 export const validateCookieMutationRequest = (
   request: Request,
   allowedOrigins: readonly string[],
+  allowedContentTypes: readonly string[] = ["application/json"],
 ): MutationRequestValidation => {
   if (!isCookieMutationMethod(request.method)) return { allowed: true };
 
@@ -66,7 +67,8 @@ export const validateCookieMutationRequest = (
     return { allowed: false, rejection: "ORIGIN_NOT_ALLOWED" };
   }
 
-  if (!isJsonContentType(request.headers.get("content-type"))) {
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (!contentType || !allowedContentTypes.includes(contentType)) {
     return { allowed: false, rejection: "JSON_CONTENT_TYPE_REQUIRED" };
   }
 

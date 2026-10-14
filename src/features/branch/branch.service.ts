@@ -244,6 +244,11 @@ export const createBranchService = (
         const before = await dependencies.repository.findById(executor, id);
         if (!before) throw new ApplicationError("RESOURCE_NOT_FOUND");
         if (!before.isActive) throw new ApplicationError("STATE_CONFLICT");
+        if (await dependencies.repository.hasActiveChildren(executor, id)) {
+          throw new ApplicationError("STATE_CONFLICT", {
+            publicMessage: "ปิดใช้งานแผนกที่อยู่ในสาขาก่อนปิดสาขา",
+          });
+        }
 
         const record = await dependencies.repository.deactivate(executor, id);
         if (!record) throw new ApplicationError("STATE_CONFLICT");

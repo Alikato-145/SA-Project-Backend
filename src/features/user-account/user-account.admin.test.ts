@@ -33,6 +33,7 @@ const setup = (overrides: Partial<UserAccountAdminRepository> = {}) => {
     async findByUsername() { return null; },
     async findByEmployeeId() { return null; },
     async employeeExists() { return true; },
+    async linkEmployee(_executor, _id, employeeId) { current = account({ ...current, employeeId }); return current; },
     async insert(_executor, input) {
       storedHash = input.passwordHash;
       current = account({ username: input.username, employeeId: input.employeeId });
@@ -68,6 +69,16 @@ const setup = (overrides: Partial<UserAccountAdminRepository> = {}) => {
 };
 
 describe("user-account administration", () => {
+  test("links an unbound account once, rejects replacement/duplicates and audits the reason", async () => {
+    const command = { actor: owner, requestId: "link", accountId: "9", employeeId: "99", reason: "ตรวจสอบเจ้าของบัญชีแล้ว" };
+    const fixture = setup({ async findById() { return account({ employeeId: null }); } });
+    expect((await fixture.service.linkEmployee(command)).account.employeeId).toBe("99");
+    expect(JSON.stringify(fixture.events)).toContain(command.reason);
+    await expect(setup().service.linkEmployee(command)).rejects.toMatchObject({ code: "STATE_CONFLICT" });
+    await expect(setup({ async findById() { return account({ employeeId: null }); }, async findByEmployeeId() { return { id: "8" }; } }).service.linkEmployee(command))
+      .rejects.toMatchObject({ code: "EMPLOYEE_ACCOUNT_ALREADY_EXISTS" });
+    await expect(fixture.service.linkEmployee({ ...command, actor: { ...owner, grants: [] } })).rejects.toMatchObject({ code: "FORBIDDEN_SCOPE" });
+  });
   test("creates an employee-linked account and returns a temporary password only in the result", async () => {
     const { service, events, storedHash } = setup();
     const result = await service.createAccount({

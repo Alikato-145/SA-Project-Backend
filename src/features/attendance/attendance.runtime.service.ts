@@ -11,7 +11,7 @@ import type { CreateManualWorkDayCommand, AttendanceActor, WorkDayRangeFilter } 
 export const createAttendanceRuntimeService=(runtime:OperationRuntime,schedule:BranchScheduleService,holiday:HolidayCalendarService)=>{
  const repository=new DrizzleAttendanceRepository();
  const read=async(actor:AttendanceActor,filter:WorkDayRangeFilter)=>{
-  if(filter.employeeId) { let date=realDate(filter.startDate);while(date<=filter.endDate) {await runtime.context.assertEmployee(actor,filter.employeeId,date,"read");const next=new Date(`${date}T00:00:00Z`);next.setUTCDate(next.getUTCDate()+1);date=next.toISOString().slice(0,10);} }
+  if(filter.employeeId) { let authorized=false;let date=realDate(filter.startDate);while(date<=filter.endDate) {try {await runtime.context.assertEmployee(actor,filter.employeeId,date,"read");authorized=true;}catch(error){if(!(error instanceof ApplicationError)||error.code!=="PAYROLL_ASSIGNMENT_MISSING")throw error;}const next=new Date(`${date}T00:00:00Z`);next.setUTCDate(next.getUTCDate()+1);date=next.toISOString().slice(0,10);}if(!authorized)throw new ApplicationError("FORBIDDEN_SCOPE"); }
   else if(filter.branchId)await runtime.context.assertBranch(actor,filter.branchId,true);
   else runtime.context.assertGlobal(actor);
  };
@@ -39,6 +39,29 @@ export const createAttendanceRuntimeService=(runtime:OperationRuntime,schedule:B
  };
  const create=service.createManualWorkDay.bind(service),correct=service.correctWorkDay.bind(service),find=service.findForPayrollRange.bind(service);
  return Object.assign(service,{
+  async getCalendar(actor:AttendanceActor,employeeId:number,startDate:string,endDate:string) {
+   const records=await service.findForPayrollRange(actor,{employeeId,startDate,endDate});
+   const days=[];
+   for(const cursor=new Date(`${startDate}T00:00:00Z`);cursor.toISOString().slice(0,10)<=endDate;cursor.setUTCDate(cursor.getUTCDate()+1)) {
+    const date=cursor.toISOString().slice(0,10);
+    let context;
+    try {context=await runtime.context.context(employeeId,date);}catch(error){if(!(error instanceof ApplicationError)||error.code!=="PAYROLL_ASSIGNMENT_MISSING")throw error;days.push({date,status:"not_employed",branchId:null,branchName:null,recordId:null});continue;}
+    const record=records.find(row=>row.workDate===date);
+    const applicable=await schedule.getApplicableSchedule(context.branchId,date);
+    const weekly=await runtime.context.weeklyHoliday(employeeId,date)||(applicable.kind==="override"&&applicable.override.isClosed);
+    const isPublic=(await holiday.getActiveHoliday(context.shopId,date)).length>0;
+    days.push({date,status:record?.status ?? (weekly ? "weekly_holiday" : isPublic ? "public_holiday" : applicable.kind==="none" ? "schedule_missing" : "missing"),branchId:context.branchId,branchName:context.branchName,recordId:record?.id ?? null});
+   }
+   return days;
+  },
+  async getWorkDayContext(actor:AttendanceActor,employeeId:number,date:string) {
+   await runtime.context.assertEmployee(actor,employeeId,realDate(date),"read");
+   const context=await runtime.context.context(employeeId,date);
+   const applicable=await schedule.getApplicableSchedule(context.branchId,date);
+   const holidays=await holiday.getActiveHoliday(context.shopId,date);
+   const weekly=await runtime.context.weeklyHoliday(employeeId,date);
+   return {employeeId,branchId:context.branchId,branchName:context.branchName,shopId:context.shopId,applicable,weeklyHoliday:weekly,publicHoliday:holidays.length>0};
+  },
   async findForPayrollRange(actor:AttendanceActor,filter:WorkDayRangeFilter) {
    return runtime.context.visibleWorkDays(actor,await find(actor,filter));
   },

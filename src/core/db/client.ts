@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { dbConfig } from "../config/config.db";
 import * as schema from "../../db/schema";
 
-export const pool = new Pool({ connectionString: dbConfig.databaseUrl });
+export const pool = new Pool({ connectionString: dbConfig.databaseUrl, connectionTimeoutMillis: 3000 });
 export const db = drizzle({ client: pool, schema });
 
 let closing: Promise<void> | undefined;

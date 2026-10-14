@@ -52,6 +52,24 @@ export class OvertimeService {
   async approveOvertime(actor: OvertimeActor, id: number, remark?: string) {
     return this.decide(actor, id, "approved", remark);
   }
+  async updateOvertime(actor: OvertimeActor, id: number, command: Omit<SubmitOvertimeCommand, "employeeId">) {
+    validDate(command.overtimeDate);
+    return this.repository.withTransaction(async (session) => {
+      const record = await session.findForUpdate(id);
+      if (!record) throw new OvertimeError("OVERTIME_NOT_FOUND");
+      await this.access.assertCanSubmit(actor, record.employeeId, record.overtimeDate);
+      await this.access.assertCanSubmit(actor, record.employeeId, command.overtimeDate);
+      if (record.status !== "pending") throw new OvertimeError("OVERTIME_NOT_PENDING");
+      const updatedCommand = { ...command, employeeId: record.employeeId };
+      assertOvertimeValue(updatedCommand);
+      await this.payrollLock.assertDateUnlocked(session.transaction, record.employeeId, record.overtimeDate);
+      await this.payrollLock.assertDateUnlocked(session.transaction, record.employeeId, command.overtimeDate);
+      await this.context.assertEligible(updatedCommand, actor);
+      const updated = await session.updatePending(id, updatedCommand);
+      await session.appendAction(id, actor.accountId, "overridden", `แก้ไขคำขอ OT ${record.overtimeDate} เป็น ${command.overtimeDate}`);
+      return updated;
+    });
+  }
   async rejectOvertime(actor: OvertimeActor, id: number, remark?: string) {
     return this.decide(actor, id, "rejected", remark);
   }

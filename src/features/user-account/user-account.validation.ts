@@ -11,3 +11,11 @@ export const loginRequestSchema = t.Object(
   },
   { additionalProperties: false },
 );
+
+export const changePasswordRequestSchema = t.Object(
+  {
+    current_password: t.String({ minLength: 1, maxLength: 1_024 }),
+    new_password: t.String({ minLength: 8, maxLength: 1_024 }),
+  },
+  { additionalProperties: false },
+);

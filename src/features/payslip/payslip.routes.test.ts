@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import type { AuthenticatedActor } from "../../core/auth/auth.types";
 import { createPayslipRoutes } from "./payslip.routes";
 const actor: AuthenticatedActor = { accountId: "1", employeeId: "2", username: "employee", grants: [{ grantId: "1", roleCode: "EMPLOYEE", scope: "self", branchId: null, departmentId: null }] };
-const service = { async generate() { return { id: "1" }; }, async mine() { return [{ id: "1" }]; }, async get() { return { id: "1" }; }, async deliver() { return { id: "1", status: "sent" }; }, async void() { return { id: "1", status: "voided" }; } } as never;
+const row = { id: "1", payrollRecordId: "1", employeeId: "2", generatedAt: new Date("2026-09-01"), status: "generated", totalEarnings: "100", totalDeductions: "0", netPay: "100" };
+const service = { async generate() { return row; }, async mine() { return [row]; }, async get() { return row; }, async deliver() { return { id: "1", status: "sent", attemptedAt: new Date() }; }, async void() { return { id: "1", status: "voided" }; } } as never;
 test("payslip routes retain self-service and validated mutation contracts", async () => {
   const app = createPayslipRoutes({ service, authenticate: async () => actor, allowedOrigins: ["http://localhost:3000"] });
   expect((await app.handle(new Request("http://test/api/v1/payslips/mine"))).status).toBe(200);

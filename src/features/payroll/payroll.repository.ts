@@ -8,6 +8,10 @@ import { branchScheduleOverrides, branchSchedules } from "../branch-schedule/bra
 import { debtTransactions } from "../debt/debt.schema";
 import { employeeWeeklyHolidays } from "../employee-weekly-holiday/employee-weekly-holiday.schema";
 import { employees } from "../employee/employee.schema";
+import { departments } from "../department/department.schema";
+import { positions } from "../position/position.schema";
+import { employeeBankAccounts } from "../employee-bank-account/employee-bank-account.schema";
+import type { PayrollReadinessFacts } from "./payroll.readiness.types";
 import { employmentAssignments } from "../employment-assignment/employment-assignment.schema";
 import { leaveRequestDays, leaveRequests } from "../leave/leave.schema";
 import { holidayCalendars } from "../holiday-calendar/holiday-calendar.schema";
@@ -32,6 +36,7 @@ import type {
   PayrollRecordDetail,
   PayrollCalculationInput,
   PayrollBlocker,
+  PayrollRosterEntry,
 } from "./payroll.types";
 
 type Executor = DatabaseExecutor;
@@ -59,6 +64,10 @@ const toPeriod = (row: typeof payrollPeriods.$inferSelect): PayrollPeriodRecord 
 export interface PayrollRepositorySession {
   executor: Executor;
   findActiveShop(id: string): Promise<boolean>;
+  findConfigurationForUpdate(id:string):Promise<PayrollConfigurationRecord|null>;
+  endConfiguration(id:string,date:string):Promise<void>;
+  configurationRangeIsLocked(shopId:string,startDate:string,endDate:string|null):Promise<boolean>;
+  findBranchInShop(branchId:string,shopId:string):Promise<boolean>;
   findConfigurationOverlap(command: Omit<CreatePayrollConfigurationCommand, "actor" | "requestId">): Promise<boolean>;
   insertConfiguration(command: Omit<CreatePayrollConfigurationCommand, "actor" | "requestId"> & { actorId: string }): Promise<PayrollConfigurationRecord>;
   resolveConfiguration(shopId: string, branchId: string | null, key: PayrollConfigurationKey, date: string, forUpdate?: boolean): Promise<PayrollConfigurationRecord | null>;
@@ -72,7 +81,8 @@ export interface PayrollRepositorySession {
   insertAdjustment(command: { originalRecordId: string; targetPeriodId: string; direction: "earning" | "deduction"; amount: string; reason: string; actorId: string }): Promise<PayrollAdjustmentRecord>;
   findAdjustment(id: string): Promise<PayrollAdjustmentRecord | null>;
   decideAdjustment(id: string, decision: "approved" | "rejected", actorId: string): Promise<PayrollAdjustmentRecord>;
-  findRecordState(id: string): Promise<{ status: "draft" | "calculated" | "locked"; branchId: string; periodEnd: string } | null>;
+  findRecordState(id: string): Promise<{ status: "draft" | "calculated" | "locked"; branchId: string; shopId: string; employeeId: string; periodEnd: string } | null>;
+  hasAssignmentForPeriod(employeeId:string,period:PayrollPeriodRecord):Promise<boolean>;
 }
 
 export interface PayrollRepository {
@@ -83,6 +93,8 @@ export interface PayrollRepository {
   findRecordBranch(recordId: string): Promise<string | null>;
   findRecordDetail(periodId: string, recordId: string): Promise<PayrollRecordDetail | null>;
   listPeriodRecords(periodId: string, branchIds: readonly string[] | null): Promise<PayrollRecordDetail[]>;
+  listPeriodRoster?(period: PayrollPeriodRecord, branchIds: readonly string[] | null): Promise<PayrollRosterEntry[]>;
+  listReadinessFacts?(period:PayrollPeriodRecord,branchIds:readonly string[]|null):Promise<PayrollReadinessFacts>;
   listAdjustments(recordId?: string): Promise<PayrollAdjustmentRecord[]>;
 }
 
@@ -92,6 +104,21 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
     const [shop] = await executor.select({ id: shops.id }).from(shops)
       .where(and(eq(shops.id, numericId(shopId)), eq(shops.isActive, true))).limit(1);
     return shop !== undefined;
+  },
+  async findConfigurationForUpdate(configurationId) {
+    const [row]=await executor.select().from(payrollConfigurations).where(eq(payrollConfigurations.id,numericId(configurationId))).limit(1).for("update");
+    return row ? toConfiguration(row) : null;
+  },
+  async endConfiguration(configurationId,date) {
+    await executor.update(payrollConfigurations).set({effectiveTo:date}).where(eq(payrollConfigurations.id,numericId(configurationId)));
+  },
+  async configurationRangeIsLocked(shopId,startDate,endDate) {
+    const [row]=await executor.select({id:payrollPeriods.id}).from(payrollPeriods).where(and(eq(payrollPeriods.shopId,numericId(shopId)),eq(payrollPeriods.status,"locked"),gte(payrollPeriods.endDate,startDate),endDate===null?sql`true`:lte(payrollPeriods.startDate,endDate))).limit(1);
+    return Boolean(row);
+  },
+  async findBranchInShop(branchId,shopId) {
+    const [row]=await executor.select({id:branches.id}).from(branches).where(and(eq(branches.id,numericId(branchId)),eq(branches.shopId,numericId(shopId)),eq(branches.isActive,true))).limit(1);
+    return Boolean(row);
   },
   async findConfigurationOverlap(command) {
     const rows = await executor.select({ id: payrollConfigurations.id }).from(payrollConfigurations).where(and(
@@ -120,7 +147,7 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
       branchId === null
         ? isNull(payrollConfigurations.branchId)
         : or(eq(payrollConfigurations.branchId, numericId(branchId)), isNull(payrollConfigurations.branchId)),
-    )).orderBy(desc(payrollConfigurations.branchId), desc(payrollConfigurations.effectiveFrom)).limit(1);
+    )).orderBy(sql`${payrollConfigurations.branchId} desc nulls last`, desc(payrollConfigurations.effectiveFrom)).limit(1);
     const rows = forUpdate ? await query.for("update") : await query;
     return rows[0] ? toConfiguration(rows[0]) : null;
   },
@@ -223,11 +250,15 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
     return toAdjustment(row);
   },
   async findRecordState(recordId) {
-    const [row] = await executor.select({ status: payrollRecords.status, branchId: employmentAssignments.branchId, periodEnd: payrollPeriods.endDate })
+    const [row] = await executor.select({ status: payrollRecords.status, branchId: employmentAssignments.branchId, shopId:payrollPeriods.shopId,employeeId:payrollRecords.employeeId, periodEnd: payrollPeriods.endDate })
       .from(payrollRecords).innerJoin(employmentAssignments, eq(payrollRecords.employmentAssignmentId, employmentAssignments.id))
       .innerJoin(payrollPeriods, eq(payrollRecords.payrollPeriodId, payrollPeriods.id))
       .where(eq(payrollRecords.id, numericId(recordId))).limit(1);
-    return row ? { status: row.status, branchId: id(row.branchId), periodEnd: row.periodEnd } : null;
+    return row ? { status: row.status, branchId: id(row.branchId),shopId:id(row.shopId),employeeId:id(row.employeeId), periodEnd: row.periodEnd } : null;
+  },
+  async hasAssignmentForPeriod(employeeId,period) {
+    const rows=await executor.select({id:employmentAssignments.id}).from(employmentAssignments).innerJoin(branches,eq(branches.id,employmentAssignments.branchId)).where(and(eq(employmentAssignments.employeeId,numericId(employeeId)),eq(employmentAssignments.isPrimary,true),eq(branches.shopId,numericId(period.shopId)),lte(employmentAssignments.effectiveFrom,period.endDate),or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,period.startDate)))).limit(1);
+    return rows.length>0;
   },
 });
 
@@ -241,6 +272,29 @@ const toAdjustment = (row: typeof payrollAdjustments.$inferSelect): PayrollAdjus
 });
 
 export class DrizzlePayrollRepository implements PayrollRepository {
+  async listReadinessFacts(period:PayrollPeriodRecord,branchIds:readonly string[]|null):Promise<PayrollReadinessFacts> {
+    const roster=await this.listPeriodRoster(period,branchIds);
+    const branchRows=await db.select({id:branches.id,name:branches.name}).from(branches).where(and(eq(branches.shopId,numericId(period.shopId)),branchIds===null?undefined:inArray(branches.id,branchIds.map(numericId))));
+    const ids=[...new Set(roster.map(row=>numericId(row.employeeId)))],branchKeys=branchRows.map(row=>row.id);
+    const [departmentRows,positionRows,configurations,schedules,attendance,weeklyHolidays,holidays,overrides,bankRows,leave,ot,advances,adjustments]=await Promise.all([
+      db.select({branchId:departments.branchId}).from(departments).where(inArray(departments.branchId,branchKeys)),
+      db.select({id:positions.id}).from(positions).where(eq(positions.shopId,numericId(period.shopId))),
+      this.listConfigurations(period.shopId),
+      db.select().from(branchSchedules).where(inArray(branchSchedules.branchId,branchKeys)),
+      db.select({employeeId:workDayRecords.employeeId,date:workDayRecords.workDate}).from(workDayRecords).where(and(inArray(workDayRecords.employeeId,ids),inArray(workDayRecords.branchId,branchKeys),gte(workDayRecords.workDate,period.startDate),lte(workDayRecords.workDate,period.endDate))),
+      db.select().from(employeeWeeklyHolidays).where(inArray(employeeWeeklyHolidays.employeeId,ids)),
+      db.select({date:holidayCalendars.holidayDate}).from(holidayCalendars).where(and(eq(holidayCalendars.shopId,numericId(period.shopId)),eq(holidayCalendars.isActive,true),gte(holidayCalendars.holidayDate,period.startDate),lte(holidayCalendars.holidayDate,period.endDate))),
+      db.select({branchId:branchScheduleOverrides.branchId,date:branchScheduleOverrides.scheduleDate,isClosed:branchScheduleOverrides.isClosed}).from(branchScheduleOverrides).where(and(inArray(branchScheduleOverrides.branchId,branchKeys),gte(branchScheduleOverrides.scheduleDate,period.startDate),lte(branchScheduleOverrides.scheduleDate,period.endDate))),
+      db.select({employeeId:employeeBankAccounts.employeeId}).from(employeeBankAccounts).where(and(inArray(employeeBankAccounts.employeeId,ids),eq(employeeBankAccounts.isActive,true),eq(employeeBankAccounts.isPrimary,true),sql`${employeeBankAccounts.bankCode} <> ''`,sql`${employeeBankAccounts.accountHolderName} <> ''`)),
+      db.select({employeeId:leaveRequests.employeeId,startDate:leaveRequests.startDate,endDate:leaveRequests.endDate}).from(leaveRequests).where(and(inArray(leaveRequests.employeeId,ids),eq(leaveRequests.status,"pending"),lte(leaveRequests.startDate,period.endDate),gte(leaveRequests.endDate,period.startDate))),
+      db.select({employeeId:overtimeRecords.employeeId,date:overtimeRecords.overtimeDate,status:overtimeRecords.status,type:overtimeRecords.overtimeType}).from(overtimeRecords).where(and(inArray(overtimeRecords.employeeId,ids),gte(overtimeRecords.overtimeDate,period.startDate),lte(overtimeRecords.overtimeDate,period.endDate))),
+      db.select({employeeId:advanceRequests.employeeId,date:advanceRequests.requestMonth}).from(advanceRequests).where(and(inArray(advanceRequests.employeeId,ids),eq(advanceRequests.status,"pending"),eq(advanceRequests.requestMonth,period.startDate))),
+      db.select({employeeId:payrollRecords.employeeId}).from(payrollAdjustments).innerJoin(payrollRecords,eq(payrollRecords.id,payrollAdjustments.originalPayrollRecordId)).innerJoin(employmentAssignments,eq(employmentAssignments.id,payrollRecords.employmentAssignmentId)).where(and(eq(payrollAdjustments.appliedPayrollPeriodId,numericId(period.id)),eq(payrollAdjustments.status,"pending"),branchIds===null?undefined:inArray(employmentAssignments.branchId,branchIds.map(numericId)))),
+    ]);
+    return {branches:branchRows.map(row=>({...row,id:id(row.id)})),departmentBranchIds:departmentRows.map(row=>id(row.branchId)),positionCount:positionRows.length,roster,configurations:configurations.filter(row=>row.branchId===null||branchKeys.includes(numericId(row.branchId))),
+      schedules:schedules.map(row=>({branchId:id(row.branchId),effectiveFrom:row.effectiveFrom,effectiveTo:row.effectiveTo})),attendance:attendance.map(row=>({...row,employeeId:id(row.employeeId)})),weeklyHolidays:weeklyHolidays.map(row=>({employeeId:id(row.employeeId),weekday:row.weekday,effectiveFrom:row.effectiveFrom,effectiveTo:row.effectiveTo})),holidays:holidays.map(row=>row.date),overrides:overrides.map(row=>({...row,branchId:id(row.branchId)})),bankEmployeeIds:bankRows.map(row=>id(row.employeeId)),approvedOvertime:ot.filter(row=>row.status==="approved").map(row=>({employeeId:id(row.employeeId),date:row.date,type:row.type})),
+      pending:[...leave.map(row=>({...row,kind:"leave",employeeId:id(row.employeeId)})),...ot.filter(row=>row.status==="pending").map(row=>({kind:"overtime",employeeId:id(row.employeeId),startDate:row.date,endDate:row.date})),...advances.map(row=>({kind:"advance",employeeId:id(row.employeeId),startDate:row.date,endDate:period.endDate})),...adjustments.map(row=>({kind:"adjustment",employeeId:id(row.employeeId),startDate:period.startDate,endDate:period.endDate}))]};
+  }
   withTransaction<T>(work: (session: PayrollRepositorySession) => Promise<T>): Promise<T> {
     return db.transaction((transaction) => work(createPayrollRepositorySession(transaction)));
   }
@@ -299,14 +353,22 @@ export class DrizzlePayrollRepository implements PayrollRepository {
       .where(and(
         eq(payrollRecords.payrollPeriodId, numericId(periodId)),
         branchIds === null ? undefined : inArray(employmentAssignments.branchId, branchIds.map(numericId)),
-      )).orderBy(asc(payrollRecords.employeeId)).limit(500);
+      )).orderBy(asc(payrollRecords.employeeId));
     const records = await Promise.all(rows.map((row) => this.findRecordDetail(periodId, id(row.id))));
     return records.filter((record): record is PayrollRecordDetail => record !== null);
+  }
+  async listPeriodRoster(period:PayrollPeriodRecord,branchIds:readonly string[] | null):Promise<PayrollRosterEntry[]> {
+    if(branchIds !== null && !branchIds.length)return [];
+    const rows=await db.select({employeeId:employees.id,employeeCode:employees.employeeCode,firstName:employees.firstName,lastName:employees.lastName,branchId:branches.id,branchName:branches.name,effectiveFrom:employmentAssignments.effectiveFrom,effectiveTo:employmentAssignments.effectiveTo}).from(employmentAssignments)
+      .innerJoin(employees,eq(employees.id,employmentAssignments.employeeId)).innerJoin(branches,eq(branches.id,employmentAssignments.branchId))
+      .where(and(eq(branches.shopId,numericId(period.shopId)),eq(employmentAssignments.isPrimary,true),lte(employmentAssignments.effectiveFrom,period.endDate),or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,period.startDate)),branchIds === null ? undefined : inArray(branches.id,branchIds.map(numericId))))
+      .orderBy(asc(employees.employeeCode),asc(employmentAssignments.effectiveFrom));
+    return rows.map(({firstName,lastName,...row})=>({...row,employeeId:id(row.employeeId),branchId:id(row.branchId),employeeName:`${firstName} ${lastName}`}));
   }
   async listAdjustments(recordId?: string) {
     const rows = await db.select().from(payrollAdjustments)
       .where(recordId ? eq(payrollAdjustments.originalPayrollRecordId, numericId(recordId)) : undefined)
-      .orderBy(desc(payrollAdjustments.requestedAt)).limit(500);
+      .orderBy(desc(payrollAdjustments.requestedAt));
     return rows.map(toAdjustment);
   }
 }
@@ -346,7 +408,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
   async load(session: PayrollRepositorySession, period: PayrollPeriodRecord, options: { lockSources?: boolean; projectionCutoff?: string } = {}): Promise<PayrollInputLoadResult> {
     const executor = session.executor;
     const earningEnd = options.projectionCutoff ?? period.endDate;
-    const assignmentQuery = executor.select({ assignment: employmentAssignments, employeeCode: employees.employeeCode })
+    const assignmentQuery = executor.select({ assignment: employmentAssignments, employeeCode: employees.employeeCode, firstName: employees.firstName, lastName: employees.lastName })
       .from(employmentAssignments)
       .innerJoin(employees, eq(employmentAssignments.employeeId, employees.id))
       .innerJoin(branches, eq(employmentAssignments.branchId, branches.id))
@@ -393,6 +455,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       const assignment = snapshotRow;
       const employeeId = id(assignment.employeeId);
       const branchId = id(assignment.branchId);
+      const addBlocker = (blocker:PayrollBlocker) => blockers.push({...blocker,employeeName:`${employeeAssignments[0]!.firstName} ${employeeAssignments[0]!.lastName}`,branchId});
       const snapshotDate = assignment.effectiveTo && assignment.effectiveTo < earningEnd ? assignment.effectiveTo : earningEnd;
       const required = await Promise.all([
         session.resolveConfiguration(period.shopId, branchId, "STANDARD_WORK_DAYS", snapshotDate, options.lockSources),
@@ -402,7 +465,8 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         session.resolveConfiguration(period.shopId, branchId, "SOCIAL_SECURITY_CAP", snapshotDate, options.lockSources),
       ]);
       if (required.some((value) => value === null)) {
-        blockers.push({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, detail: "Required effective payroll configuration is missing." });
+        const keys=["STANDARD_WORK_DAYS","ABSENCE_RATE","LATE_RATE","SOCIAL_SECURITY_RATE","SOCIAL_SECURITY_CAP"].filter((_key,index)=>required[index]===null);
+        addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, configurationKeys:keys,affectedDates:[snapshotDate],detail: `ยังไม่มีค่าคำนวณ ${keys.join(", ")} ที่มีผลวันที่ ${snapshotDate} ให้เพิ่มค่าของสาขานี้หรือค่ากลางของร้านในส่วนค่าคำนวณ` });
         continue;
       }
       const configurationEvidence = new Map<string, PayrollCalculationInput["configurationEvidence"] extends readonly (infer T)[] | undefined ? T : never>();
@@ -451,7 +515,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       const activeAssignmentDates = employmentDates.filter((date) => date <= earningEnd);
       const assignmentGaps = activeAssignmentDates.filter((date) => !payrollEffectiveOn(assignmentRowsOnly, date));
       if (assignmentGaps.length > 0) {
-        blockers.push({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, detail: `No assignment is effective on ${assignmentGaps[0]}.` });
+        addBlocker({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, affectedDates: assignmentGaps, detail: `ประวัติการสังกัดขาดช่วงวันที่ ${assignmentGaps[0]} ให้ตรวจประวัติการจ้างในหน้าพนักงาน` });
         continue;
       }
       const missingSchedule = activeAssignmentDates.filter((date) => {
@@ -459,8 +523,8 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         return !payrollEffectiveOn(schedules.filter((row) => row.branchId === datedAssignment.branchId), date);
       });
       if (missingSchedule.length > 0) {
-        blockers.push({ code: "PAYROLL_ATTENDANCE_INCOMPLETE", employeeId,
-          detail: `No effective branch schedule exists for ${missingSchedule[0]}.` });
+        addBlocker({ code: "PAYROLL_ATTENDANCE_INCOMPLETE", employeeId,
+          affectedDates: missingSchedule, detail: `ยังไม่มีตารางสาขาที่มีผลวันที่ ${missingSchedule[0]} ให้เพิ่มตารางในหน้าตารางและวันหยุด โดยเริ่มใช้ไม่ช้ากว่าวันนี้` });
         continue;
       }
       const coveredDates = activeAssignmentDates
@@ -476,8 +540,8 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       const recordedDates = new Set(days.map((row) => row.workDate));
       const missingAttendance = coveredDates.filter((date) => !recordedDates.has(date));
       if (missingAttendance.length > 0) {
-        blockers.push({ code: "PAYROLL_ATTENDANCE_INCOMPLETE", employeeId,
-          detail: `Missing work-day facts for ${missingAttendance.slice(0, 3).join(", ")}${missingAttendance.length > 3 ? "…" : ""}.` });
+        addBlocker({ code: "PAYROLL_ATTENDANCE_INCOMPLETE", employeeId,
+          affectedDates: missingAttendance, detail: `ยังขาดรายการลงเวลา ${missingAttendance.length} วัน: ${missingAttendance.join(", ")} ให้บันทึกหรือแก้ไขรายการในหน้าลงเวลา` });
         continue;
       }
       const dailyInputs: PayrollCalculationInput["workDays"][number][] = [];
@@ -485,7 +549,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       for (const row of days) {
         const dayAssignment = payrollEffectiveOn(assignmentRowsOnly, row.workDate);
         if (!dayAssignment) {
-          blockers.push({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, detail: `No assignment is effective on ${row.workDate}.` });
+          addBlocker({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, affectedDates: [row.workDate], detail: `ไม่มีประวัติการสังกัดที่มีผลวันที่ ${row.workDate}` });
           dailyBlocked = true;
           continue;
         }
@@ -496,7 +560,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
           session.resolveConfiguration(period.shopId, dayBranchId, "LATE_RATE", row.workDate, options.lockSources),
         ]);
         if (!standardWorkDays || !absenceRate || !lateRate) {
-          blockers.push({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, detail: `Daily payroll configuration is missing for ${row.workDate}.` });
+          addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, affectedDates: [row.workDate], configurationKeys: [!standardWorkDays ? "STANDARD_WORK_DAYS" : "", !absenceRate ? "ABSENCE_RATE" : "", !lateRate ? "LATE_RATE" : ""].filter(Boolean), detail: `ค่าคำนวณรายวันไม่ครบวันที่ ${row.workDate} ให้ตรวจช่วงเริ่มและสิ้นสุดของค่าคำนวณ` });
           dailyBlocked = true;
           continue;
         }
@@ -526,7 +590,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       for (const row of overtimeRows) {
         const overtimeAssignment = payrollEffectiveOn(assignmentRowsOnly, row.overtimeDate);
         if (!overtimeAssignment) {
-          blockers.push({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, detail: `No assignment is effective for overtime on ${row.overtimeDate}.` });
+          addBlocker({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, affectedDates: [row.overtimeDate], detail: `ไม่มีประวัติการสังกัดสำหรับ OT วันที่ ${row.overtimeDate}` });
           continue;
         }
         const key = row.overtimeType === "hourly" ? "OT_HOURLY_RATE" : row.overtimeType === "rest_day" ? "OT_REST_DAY_RATE" : "OT_PUBLIC_HOLIDAY_RATE";
@@ -536,7 +600,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
           session.resolveConfiguration(period.shopId, overtimeBranchId, "STANDARD_WORK_DAYS", row.overtimeDate, options.lockSources),
         ]);
         if (!config || !overtimeWorkDays) {
-          blockers.push({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, detail: `${key} is missing for ${row.overtimeDate}.` });
+          addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, configurationKeys: [key], affectedDates: [row.overtimeDate], detail: `ยังไม่มีค่า ${key} สำหรับ OT วันที่ ${row.overtimeDate}` });
           continue;
         }
         rememberConfiguration(config, row.overtimeDate);

@@ -34,6 +34,9 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
       description: `Attendance ${day.status}; late_minutes=${day.lateMinutes}; deductible=${day.deductible}`,
       quantity: null, rate: null, amount: "0.00", payrollConfigurationId: null,
       sourceTable: "work_day_records", sourceId: day.id, occurredOn: day.date }));
+    // A non-working holiday record is evidence, matching a holiday with no record.
+    // Actual work on a holiday is recorded as present/late; OT still requires approval.
+    if (day.status === "weekly_holiday" || day.status === "public_holiday") continue;
     const base = dailyBase(day.baseSalary ?? input.baseSalary, day.standardWorkDays ?? input.standardWorkDays);
     const welfare = dailyBase(day.welfare ?? input.welfare, day.standardWorkDays ?? input.standardWorkDays);
     const dayAssignmentId = day.assignmentId ?? input.assignmentId;
@@ -51,7 +54,7 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
         rate: formatMoney(base), amount: formatMoney(fixedRateAmount(base, day.absenceRate ?? input.absenceRate)),
         payrollConfigurationId: day.absenceConfigurationId ?? null, sourceTable: "work_day_records", sourceId: day.id, occurredOn: day.date }));
     }
-    if (day.status !== "leave" && day.lateMinutes > 0 && day.deductible) {
+    if (day.status === "late" && day.lateMinutes > 0 && day.deductible) {
       const amount = multiplyFixed(BigInt(day.lateMinutes), 0, rate(day.lateRate ?? input.lateRate), 4, 2);
       items.push(line({ itemType: "lateness", direction: "deduction", description: "Lateness",
         quantity: `${day.lateMinutes}.00`, rate: day.lateRate ?? input.lateRate, amount: formatMoney(amount),
@@ -114,6 +117,15 @@ export const payrollRecordTotalsReconcile = (record: PayrollCalculatedRecord): b
     .reduce((sum, item) => sum + money(item.amount), 0n);
   return earnings === money(record.totalEarnings) && deductions === money(record.totalDeductions) &&
     earnings - deductions === money(record.netPay);
+};
+
+/** Match the frozen numeric(12,2), numeric(14,4), and numeric(10,2) columns. */
+export const payrollRecordValuesFitStorage = (record: PayrollCalculatedRecord): boolean => {
+  const moneyFits = (value: string) => { const cents = money(value); return cents >= -999999999999n && cents <= 999999999999n; };
+  return [record.baseSalarySnapshot, record.welfareSnapshot, record.totalEarnings, record.totalDeductions, record.netPay].every(moneyFits)
+    && record.items.every(item => moneyFits(item.amount) && money(item.amount) >= 0n
+      && (item.rate === null || (rate(item.rate) >= 0n && rate(item.rate) <= 99999999999999n))
+      && (item.quantity === null || (quantity(item.quantity) >= 0n && quantity(item.quantity) <= 9999999999n)));
 };
 
 export const isPayrollSourceTable = (value: string) => sourceTables.has(value);

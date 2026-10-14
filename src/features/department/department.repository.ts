@@ -172,7 +172,7 @@ export const departmentRepository: DepartmentRepositoryPort = {
         eq(branches.isActive, true),
         eq(shops.isActive, true),
       ))
-      .limit(1);
+      .limit(1).for("share");
     return row !== undefined;
   },
 

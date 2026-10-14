@@ -5,7 +5,11 @@ import {
   type ActionObserver,
 } from "../../core/audit/action-observer";
 import type { DomainAuditObserver } from "../../core/audit/domain-audit-observer";
-import { verifyPassword, verifyPasswordForUnknownAccount } from "../../core/auth/password";
+import {
+  hashPassword,
+  verifyPassword,
+  verifyPasswordForUnknownAccount,
+} from "../../core/auth/password";
 import type {
   AccountStatus,
   RoleCode,
@@ -53,10 +57,12 @@ export interface CurrentActorResult {
 type AuthenticationRepository = Pick<
   UserAccountRepository,
   | "findAuthenticationByUsernameForUpdate"
+  | "findAuthenticationByIdForUpdate"
   | "findCurrentActorAccountById"
   | "findActiveGrants"
   | "updateFailedLogin"
   | "updateSuccessfulLogin"
+  | "updatePassword"
 >;
 
 type CurrentActorRepository = Pick<
@@ -78,6 +84,12 @@ export interface UserAccountAuthenticationService {
     token: string | undefined;
     requestId: string;
   }): Promise<CurrentActorResult>;
+  changePassword(command: {
+    token: string | undefined;
+    currentPassword: string;
+    newPassword: string;
+    requestId: string;
+  }): Promise<void>;
 }
 
 export interface UserAccountServiceDependencies {
@@ -93,6 +105,7 @@ export interface UserAccountServiceDependencies {
   maxFailedAttempts?: number;
   lockDurationSeconds?: number;
   passwordVerifier?: (plainText: string, passwordHash: string) => Promise<boolean>;
+  passwordHasher?: (plainText: string) => Promise<string>;
   unknownAccountPasswordVerifier?: (submittedPassword: string) => Promise<false>;
 }
 
@@ -190,6 +203,7 @@ export const createUserAccountService = (
   const maxFailedAttempts = dependencies.maxFailedAttempts ?? 5;
   const lockDurationSeconds = dependencies.lockDurationSeconds ?? 15 * 60;
   const passwordVerifier = dependencies.passwordVerifier ?? verifyPassword;
+  const passwordHasher = dependencies.passwordHasher ?? hashPassword;
   const unknownPasswordVerifier =
     dependencies.unknownAccountPasswordVerifier ??
     verifyPasswordForUnknownAccount;
@@ -346,6 +360,71 @@ export const createUserAccountService = (
         if (!actor) throw new ApplicationError("AUTH_REQUIRED");
         return actor;
       });
+    },
+
+    async changePassword(command) {
+      const claims = await dependencies.tokenService.verify(command.token);
+      const accountId = Number(claims?.sub);
+      if (!claims || !Number.isSafeInteger(accountId) || accountId <= 0) {
+        const error = new ApplicationError("AUTH_REQUIRED");
+        await dependencies.actions.observeFailure(
+          createActionContext({
+            requestId: command.requestId,
+            actorAccountId: null,
+            actionBase: "authentication.password.change",
+            target: { tableName: "user_accounts", recordId: "self" },
+          }),
+          error,
+        );
+        throw error;
+      }
+
+      const context = createActionContext({
+        requestId: command.requestId,
+        actorAccountId: String(accountId),
+        actionBase: "authentication.password.change",
+        target: { tableName: "user_accounts", recordId: String(accountId) },
+      });
+
+      await dependencies.actions.observeMutation(context, () =>
+        dependencies.transactionRunner.transaction(async (transaction) => {
+          const repository = dependencies.repositoryFactory(transaction);
+          const account =
+            await repository.findAuthenticationByIdForUpdate(accountId);
+          if (!account || account.status === "disabled") {
+            throw new ApplicationError("AUTH_REQUIRED");
+          }
+          if (command.newPassword.length < 8) {
+            throw new ApplicationError("VALIDATION_ERROR", {
+              fieldErrors: { new_password: ["Password must be at least 8 characters."] },
+            });
+          }
+          if (
+            !(await passwordVerifier(
+              command.currentPassword,
+              account.passwordHash,
+            ))
+          ) {
+            throw new ApplicationError("CURRENT_PASSWORD_INCORRECT");
+          }
+          if (command.newPassword === command.currentPassword) {
+            throw new ApplicationError("PASSWORD_UNCHANGED");
+          }
+
+          const updated = await repository.updatePassword(
+            accountId,
+            await passwordHasher(command.newPassword),
+          );
+          if (!updated) throw new ApplicationError("INTERNAL_ERROR");
+
+          const receipt = await dependencies.domain.record(transaction, context, {
+            oldData: accountSnapshot(account),
+            newData: accountSnapshot(updated),
+            reason: "self_service",
+          });
+          return dependencies.domain.complete(undefined, receipt);
+        }),
+      );
     },
   };
 

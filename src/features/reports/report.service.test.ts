@@ -17,12 +17,14 @@ const originalRepository = { ...reportRepository };
 afterEach(() => Object.assign(reportRepository, originalRepository));
 
 test("social-security CSV uses the base-salary snapshot, not the net pay", async () => {
+  reportRepository.findPeriod = async () => ({ id:20, status:"locked" }) as never;
   reportRepository.lockedRows = async () => [{
     employeeCode: "E001",
     employeeName: "Ada",
     employeeLastName: "Lovelace",
     baseSalary: "20000.00",
     netPay: "24500.00",
+    socialSecurityDeduction: "750.00",
     accountHolder: null,
     accountCiphertext: null,
     bankCode: null,
@@ -39,6 +41,6 @@ test("social-security CSV uses the base-salary snapshot, not the net pay", async
   });
 
   expect(await service.socialSecurity(hr, "20", "social-security")).toBe(
-    '"employee_code","employee_name","base_salary"\r\n"E001","Ada Lovelace","20000.00"\r\n',
+    '"employee_code","employee_name","base_salary","social_security_deduction"\r\n"E001","Ada Lovelace","20000.00","750.00"\r\n',
   );
 });

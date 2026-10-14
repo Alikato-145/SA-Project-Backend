@@ -1,5 +1,6 @@
 import type { ApprovedLeaveInput, LeaveActor, LeaveRequest, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
 import { LeaveError, type LeaveRepository, type LeaveSession } from "./leave.repository";
+import { ApplicationError } from "../../core/errors/application.error";
 
 export type LeaveAccess = {
   assertCanSubmit(actor: LeaveActor, employeeId: number, dates: string[]): Promise<void>;
@@ -59,8 +60,11 @@ export class LeaveService {
     const dates = datesInclusive(command.startDate, command.endDate);
     return this.repository.withTransaction(async (session) => {
       const request = await this.requirePending(session, id);
+      const oldDates = datesInclusive(request.startDate, request.endDate);
+      await this.access.assertCanSubmit(actor, request.employeeId, oldDates);
       await this.access.assertCanSubmit(actor, request.employeeId, dates);
       await session.lockEmployee(request.employeeId);
+      await this.payrollLock.assertDatesUnlocked(session.transaction, request.employeeId, [...oldDates, ...dates].sort());
       if (await session.findOverlap(request.employeeId, command.startDate, command.endDate, id)) {
         throw new LeaveError("LEAVE_DATE_OVERLAP");
       }
@@ -80,7 +84,7 @@ export class LeaveService {
     });
   }
 
-  async approveLeave(actor: LeaveActor, id: number, finalTypeId?: number): Promise<LeaveRequest> {
+  async approveLeave(actor: LeaveActor, id: number, finalTypeId?: number, remark?: string): Promise<LeaveRequest> {
     return this.repository.withTransaction(async (session) => {
       const request = await this.requirePending(session, id);
       const dates = datesInclusive(request.startDate, request.endDate);
@@ -96,6 +100,9 @@ export class LeaveService {
       await this.payrollLock.assertDatesUnlocked(session.transaction, request.employeeId, dates);
       const type = await session.findType(finalTypeId ?? request.originalLeaveTypeId);
       if (!type?.isActive) throw new LeaveError("LEAVE_TYPE_UNAVAILABLE");
+      if (type.requiresDocument && !await session.hasAttachment(id)) {
+        throw new ApplicationError("VALIDATION_ERROR", { publicMessage: "ประเภทการลานี้ต้องแนบเอกสารก่อนอนุมัติ" });
+      }
       const days = (await session.findDays(id)).sort((a, b) => a.leaveDate.localeCompare(b.leaveDate));
       if (days.length !== dates.length || days.some((day, index) => day.leaveDate !== dates[index])) {
         throw new LeaveError("INVALID_LEAVE");
@@ -139,7 +146,7 @@ export class LeaveService {
         await session.appendAction(id, actor.accountId, "type_changed", request.originalLeaveTypeId, type.id);
       }
       const decided = await session.decide(id, "approved", type.id);
-      await session.appendAction(id, actor.accountId, "approved");
+      await session.appendAction(id, actor.accountId, "approved", undefined, undefined, remark);
       return decided;
     });
   }

@@ -19,6 +19,7 @@ const setup = () => {
   const service = {
     async listAccounts(command) { calls.push(command); return { records: [account], total: 1 }; },
     async getAccount(command) { calls.push(command); return { account, grants: [] }; },
+    async linkEmployee(command) { calls.push(command); return { account: { ...account, employeeId: command.employeeId }, grants: [] }; },
     async createAccount(command) { calls.push(command); return { account, grants: [], temporaryPassword: "Temp!OneTime" }; },
     async changeStatus(command) { calls.push(command); return { account: { ...account, status: command.status }, grants: [] }; },
     async resetPassword(command) { calls.push(command); return { account, grants: [], temporaryPassword: "Temp!Reset" }; },

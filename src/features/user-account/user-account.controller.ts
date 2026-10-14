@@ -7,6 +7,7 @@ import {
   toCurrentActorResponseDto,
   toLoginResponseDto,
   toLogoutResponseDto,
+  toPasswordChangedResponseDto,
 } from "./user-account.mapper";
 
 export interface CurrentActorResult {
@@ -44,6 +45,12 @@ export interface UserAccountService {
     token: string | undefined;
     requestId: string;
   }): Promise<CurrentActorResult>;
+  changePassword(command: {
+    token: string | undefined;
+    currentPassword: string;
+    newPassword: string;
+    requestId: string;
+  }): Promise<void>;
 }
 
 export const createUserAccountController = (service: UserAccountService) => ({
@@ -71,6 +78,20 @@ export const createUserAccountController = (service: UserAccountService) => ({
   async me(input: { token: string | undefined; requestId: string }) {
     const actor = await service.getCurrentActor(input);
     return toCurrentActorResponseDto(actor, input.requestId);
+  },
+
+  async changePassword(input: {
+    token: string | undefined;
+    body: { current_password: string; new_password: string };
+    requestId: string;
+  }) {
+    await service.changePassword({
+      token: input.token,
+      currentPassword: input.body.current_password,
+      newPassword: input.body.new_password,
+      requestId: input.requestId,
+    });
+    return toPasswordChangedResponseDto(input.requestId);
   },
 });
 

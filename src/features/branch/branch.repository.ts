@@ -41,6 +41,7 @@ export interface BranchReadPageInput extends ParentFilteredPageInput {
 }
 
 export interface BranchRepositoryPort {
+  hasActiveChildren(executor: OrganizationExecutor, id: string): Promise<boolean>;
   findPage(
     executor: OrganizationExecutor,
     input: BranchReadPageInput,
@@ -148,6 +149,13 @@ const cannotSeeAnything = (visibility: OrganizationVisibility): boolean =>
   visibility.departmentIds.length === 0;
 
 export const branchRepository: BranchRepositoryPort = {
+  async hasActiveChildren(executor, id) {
+    await executor.select({ id: branches.id }).from(branches)
+      .where(eq(branches.id, numericId(id))).for("update");
+    const [row] = await executor.select({ id: departments.id }).from(departments)
+      .where(and(eq(departments.branchId, numericId(id)), eq(departments.isActive, true))).limit(1);
+    return row !== undefined;
+  },
   async findPage(executor, input) {
     if (cannotSeeAnything(input.visibility)) {
       return {
@@ -208,7 +216,7 @@ export const branchRepository: BranchRepositoryPort = {
       .select({ id: shops.id })
       .from(shops)
       .where(and(eq(shops.id, numericId(shopId)), eq(shops.isActive, true)))
-      .limit(1);
+      .limit(1).for("share");
     return row !== undefined;
   },
 

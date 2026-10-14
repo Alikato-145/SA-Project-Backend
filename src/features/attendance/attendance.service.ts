@@ -61,9 +61,10 @@ export class AttendanceService {
     return rows.filter((row) => row.status === "present" || row.status === "late").length;
   }
 
-  private assertRecord(record: Pick<CreateManualWorkDayCommand, "workDate" | "clockInAt" | "clockOutAt" | "lateMinutes">) {
+  private assertRecord(record: Pick<CreateManualWorkDayCommand, "workDate" | "clockInAt" | "clockOutAt" | "lateMinutes" | "status">) {
     try { realDate(record.workDate);if(record.clockInAt && bangkokBusinessDate(record.clockInAt)!==record.workDate)throw new Error();if(record.clockOutAt && Number.isNaN(record.clockOutAt.valueOf()))throw new Error(); } catch { throw new AttendanceError("INVALID_ATTENDANCE"); }
-    if (!Number.isInteger(record.lateMinutes) || record.lateMinutes < 0) {
+    if (!Number.isInteger(record.lateMinutes) || record.lateMinutes < 0 || record.lateMinutes > 1440 ||
+      (record.status !== "late" && record.lateMinutes !== 0) || (record.status === "late" && record.lateMinutes === 0)) {
       throw new AttendanceError("INVALID_ATTENDANCE");
     }
     if (record.clockInAt && record.clockOutAt && record.clockOutAt < record.clockInAt) {

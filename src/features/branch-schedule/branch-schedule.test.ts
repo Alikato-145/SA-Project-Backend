@@ -96,6 +96,7 @@ describe("BranchScheduleService", () => {
 
     for (const invalid of [
       { ...command, lateGraceMinutes: -1 },
+      { ...command, workStartTime: "09:00", standardCloseTime: "09:00:00" },
       { ...command, standardCloseTime: "09:00:00" },
       { ...command, effectiveTo: "2026-08-31" },
     ]) {

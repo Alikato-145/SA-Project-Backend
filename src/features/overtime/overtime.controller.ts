@@ -7,6 +7,7 @@ export class OvertimeController {
  private response(actor:any,value:any) { return operationSuccess(publicOperationData(value),actor.requestId); }
 
  async submit(actor:any,body:any) { return this.response(actor,await this.service.submitOvertime(actor,operationCommand(body))); }
+ async update(actor:any,id:string,body:any) { return this.response(actor,await this.service.updateOvertime(actor,databaseId(id),operationCommand(body))); }
  async approve(actor:any,id:string,body:any) { return this.response(actor,await this.service.approveOvertime(actor,databaseId(id),body.remark)); }
  async reject(actor:any,id:string,body:any) { return this.response(actor,await this.service.rejectOvertime(actor,databaseId(id),body.remark)); }
  async list(actor:any,employeeId:string) { return this.response(actor,await this.service.listRequests(actor,databaseId(employeeId))); }

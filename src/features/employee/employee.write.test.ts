@@ -46,7 +46,7 @@ const setup = (options: { failSuccessAudit?: boolean } = {}) => {
     },
   };
   const actions = new ActionObserver(root as unknown as DatabaseExecutor, writer, { error() {} });
-  const service = createEmployeeService({ rootExecutor: root as unknown as DatabaseExecutor, repository, writeRepository: repository, transactionRunner, actions, domain: new DomainAuditObserver(writer), today: () => "2026-09-27" });
+  const service = createEmployeeService({ employmentTermination:{async endAssignmentsForTermination(){}}, rootExecutor: root as unknown as DatabaseExecutor, repository, writeRepository: repository, transactionRunner, actions, domain: new DomainAuditObserver(writer), today: () => "2026-09-27" });
   return { service, root, events };
 };
 

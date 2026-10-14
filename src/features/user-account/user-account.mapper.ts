@@ -3,6 +3,7 @@ import type {
   CurrentActorResponseDto,
   LoginResponseDto,
   LogoutResponseDto,
+  PasswordChangedResponseDto,
 } from "./user-account.dto";
 import type { CurrentActorResult } from "./user-account.controller";
 
@@ -49,5 +50,12 @@ export const toCurrentActorResponseDto = (
 
 export const toLogoutResponseDto = (requestId: string): LogoutResponseDto => ({
   data: { logged_out: true },
+  request_id: requestId,
+});
+
+export const toPasswordChangedResponseDto = (
+  requestId: string,
+): PasswordChangedResponseDto => ({
+  data: { password_changed: true },
   request_id: requestId,
 });

@@ -127,9 +127,13 @@ export interface PayrollCalculationInput {
 export interface PayrollBlocker {
   code: "PAYROLL_CONFIGURATION_MISSING" | "PAYROLL_ATTENDANCE_INCOMPLETE" |
     "PAYROLL_APPROVALS_PENDING" | "PAYROLL_ASSIGNMENT_MISSING" |
-    "PAYROLL_NEGATIVE_NET_PAY" | "PAYROLL_TOTAL_MISMATCH";
+    "PAYROLL_NEGATIVE_NET_PAY" | "PAYROLL_TOTAL_MISMATCH" | "PAYROLL_CALCULATION_OUT_OF_RANGE";
   employeeId: string | null;
   detail: string;
+  employeeName?: string;
+  branchId?: string;
+  affectedDates?: string[];
+  configurationKeys?: string[];
 }
 
 export interface PayrollCalculatedRecord {
@@ -154,6 +158,12 @@ export interface PayrollPeriodDetail {
   period: PayrollPeriodRecord;
   records: PayrollRecordDetail[];
   blockers: PayrollBlocker[];
+  roster?: PayrollRosterEntry[];
+}
+
+export interface PayrollRosterEntry {
+  employeeId: string; employeeCode: string; employeeName: string;
+  branchId: string; branchName: string; effectiveFrom: string; effectiveTo: string | null;
 }
 
 export interface PayrollPreviewResult {

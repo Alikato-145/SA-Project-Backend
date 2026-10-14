@@ -2,6 +2,7 @@ import { and, asc, count, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { branches } from "../branch/branch.schema";
 import { departments } from "../department/department.schema";
+import { positions } from "../position/position.schema";
 import type {
   OrganizationPage,
   OrganizationPageInput,
@@ -12,6 +13,7 @@ import { rethrowOrganizationPersistenceError } from "../organization/organizatio
 import { shops } from "./shop.schema";
 
 export interface ShopRepositoryPort {
+  hasActiveChildren(executor: DatabaseExecutor, shopId: string): Promise<boolean>;
   list(
     executor: DatabaseExecutor,
     query: OrganizationPageInput,
@@ -88,6 +90,14 @@ const listFilter = (
 };
 
 export const shopRepository: ShopRepositoryPort = {
+  async hasActiveChildren(executor, shopId) {
+    await executor.select({ id: shops.id }).from(shops)
+      .where(eq(shops.id, numericId(shopId))).for("update");
+    const [row] = await executor.select({
+      value: sql<boolean>`exists (select 1 from ${branches} where ${branches.shopId} = ${numericId(shopId)} and ${branches.isActive} = true) or exists (select 1 from ${positions} where ${positions.shopId} = ${numericId(shopId)} and ${positions.isActive} = true)`,
+    }).from(shops).where(eq(shops.id, numericId(shopId))).limit(1);
+    return row?.value ?? false;
+  },
   async list(executor, query, visibility) {
     const where = listFilter(query, visibility);
     const offset = (query.page - 1) * query.pageSize;

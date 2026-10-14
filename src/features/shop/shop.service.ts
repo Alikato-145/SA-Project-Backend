@@ -183,6 +183,11 @@ export const createShopService = (dependencies: ShopServiceDependencies) => ({
         );
         if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
         if (!current.isActive) throw new ApplicationError("STATE_CONFLICT");
+        if (await dependencies.repository.hasActiveChildren(executor, id)) {
+          throw new ApplicationError("STATE_CONFLICT", {
+            publicMessage: "ปิดใช้งานสาขาและตำแหน่งที่อยู่ในร้านก่อนปิดร้าน",
+          });
+        }
 
         const deactivated = await dependencies.repository.deactivate(executor, id);
         if (!deactivated) throw new ApplicationError("STATE_CONFLICT");

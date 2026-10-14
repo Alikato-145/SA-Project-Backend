@@ -20,6 +20,7 @@ const fixture = () => {
     transaction: {},
     async insert(command) { calls.push("insert"); return { ...pending, ...command, hours: command.hours ?? null, dayUnits: command.dayUnits ?? null }; },
     async findForUpdate() { return current; },
+    async updatePending(_id, command) { calls.push("update"); current = { ...current, ...command, hours: command.hours ?? null, dayUnits: command.dayUnits ?? null, workDayRecordId: command.workDayRecordId ?? null, reason: command.reason ?? null }; return current; },
     async decide(_id, status) { calls.push(status); current = { ...current, status }; return current; },
     async appendAction(_id, _actorId, action) { calls.push(action); },
   };
@@ -37,6 +38,13 @@ const fixture = () => {
 };
 
 describe("overtime decisions", () => {
+  test("edits pending OT with history and rejects edits after a decision", async () => {
+    const f = fixture();
+    expect((await f.service.updateOvertime(actor, 1, { ...hourly, hours: "3" })).hours).toBe("3");
+    expect(f.calls).toEqual(["update", "overridden"]);
+    await f.service.approveOvertime(actor, 1);
+    await expect(f.service.updateOvertime(actor, 1, hourly)).rejects.toMatchObject({ code: "OVERTIME_NOT_PENDING" });
+  });
   test("validates the three amount shapes", () => {
     expect(() => assertOvertimeValue(hourly)).not.toThrow();
     expect(() => assertOvertimeValue({ ...hourly, overtimeType: "rest_day", hours: null, dayUnits: "1" })).not.toThrow();

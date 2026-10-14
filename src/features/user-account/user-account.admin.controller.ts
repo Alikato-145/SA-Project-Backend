@@ -85,6 +85,10 @@ export const createUserAccountAdminController = (
     );
   },
 
+  async linkEmployee(input: { actor: AuthenticatedActor; requestId: string; accountId: string; body: { employee_id: string; reason: string } }) {
+    return toAccountDetailResponseDto(await service.linkEmployee({ ...input, employeeId: input.body.employee_id, reason: input.body.reason }), input.requestId);
+  },
+
   async status(input: {
     actor: AuthenticatedActor;
     requestId: string;

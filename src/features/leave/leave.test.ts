@@ -25,6 +25,7 @@ const make = (overrides: Partial<LeaveSession> = {}) => {
     async lockEmployee() { calls.push("lock"); },
     async findOverlap() { return false; },
     async findType() { return type; },
+    async hasAttachment() { return false; },
     async insertRequest(_command, requestedDays) { calls.push("insert"); return { ...request, requestedDays: String(requestedDays) }; },
     async insertDays() { calls.push("days"); },
     async findRequest() { return current; },
@@ -64,6 +65,16 @@ const make = (overrides: Partial<LeaveSession> = {}) => {
 };
 
 describe("leave decisions", () => {
+  test("requires evidence before approval and retains the approval remark", async () => {
+    const fixture = make({ findType: async () => ({ ...type, requiresDocument: true }) });
+    await expect(fixture.service.approveLeave(manager, 20)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(fixture.calls).not.toContain("quota");
+    fixture.session.hasAttachment = async () => true;
+    let savedRemark: string | undefined;
+    fixture.session.appendAction = async (_id, _actor, action, _from, _to, remark) => { if (action === "approved") savedRemark = remark; };
+    await fixture.service.approveLeave(manager, 20, undefined, "ตรวจเอกสารแล้ว");
+    expect(savedRemark).toBe("ตรวจเอกสารแล้ว");
+  });
   test("lists active leave types for the picker", async () => {
     await expect(make().service.listLeaveTypes(employee)).resolves.toEqual([type]);
   });

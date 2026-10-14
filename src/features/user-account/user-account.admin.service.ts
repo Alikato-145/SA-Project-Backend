@@ -178,6 +178,27 @@ export const createUserAccountAdminService = (
       );
     },
 
+    linkEmployee(command: { actor: AuthenticatedActor; requestId: string; accountId: string; employeeId: string; reason: string }): Promise<AccountDetailResult> {
+      const observation = context(command.actor, command.requestId, "account.profile.link", command.accountId);
+      return dependencies.audit.actions.observeMutation(observation, () => dependencies.transactionRunner.transaction(async (executor) => {
+        requireAdministrator(command.actor);
+        requireId(command.accountId); requireId(command.employeeId);
+        if (!command.reason.trim() || command.reason.trim().length > 500) throw new ApplicationError("VALIDATION_ERROR");
+        const existing = await dependencies.repository.findById(executor, command.accountId);
+        if (!existing) throw new ApplicationError("RESOURCE_NOT_FOUND");
+        if (existing.employeeId !== null || existing.status !== "active") throw new ApplicationError("STATE_CONFLICT");
+        if (!(await dependencies.repository.employeeExists(executor, command.employeeId))) throw new ApplicationError("RESOURCE_NOT_FOUND");
+        if (await dependencies.repository.findByEmployeeId(executor, command.employeeId)) throw new ApplicationError("EMPLOYEE_ACCOUNT_ALREADY_EXISTS");
+        const linked = await dependencies.repository.linkEmployee(executor, command.accountId, command.employeeId);
+        if (!linked) throw new ApplicationError("STATE_CONFLICT");
+        const grants = await dependencies.repository.findActiveGrants(executor, command.accountId);
+        const receipt = await dependencies.audit.domain.record(executor, observation, {
+          oldData: snapshot(existing), newData: { ...snapshot(linked), reason: command.reason.trim() },
+        });
+        return dependencies.audit.domain.complete({ account: linked, grants }, receipt);
+      }));
+    },
+
     changeStatus(command: {
       actor: AuthenticatedActor;
       requestId: string;

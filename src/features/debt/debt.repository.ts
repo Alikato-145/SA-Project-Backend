@@ -24,6 +24,14 @@ export type DebtRepository = {
   listByEmployee(employeeId: number): Promise<DebtTransaction[]>;
 };
 export class DrizzleDebtRepository implements DebtRepository {
+ async listTypes() { return operationExecutor().query.debtTypes.findMany({ where: eq(debtTypes.isActive, true) }); }
+ async listManagedTypes() { return operationExecutor().query.debtTypes.findMany({orderBy:[debtTypes.id]}); }
+ async findTypeForUpdate(id:number) { return (await operationExecutor().select().from(debtTypes).where(eq(debtTypes.id,id)).for("update"))[0]; }
+ async hasTypeReferences(id:number) { return Boolean(await operationExecutor().query.debtTransactions.findFirst({where:eq(debtTransactions.debtTypeId,id),columns:{id:true}})); }
+ async saveType(command:{code:string;nameTh:string;description:string|null;isActive:boolean},id?:number) {
+  try {return id ? (await operationExecutor().update(debtTypes).set({...command,updatedAt:new Date()}).where(eq(debtTypes.id,id)).returning())[0]! : (await operationExecutor().insert(debtTypes).values(command).returning())[0]!;}
+  catch(error){const value=error as {code?:string;cause?:{code?:string}};if((value.code??value.cause?.code)==="23505")throw new ApplicationError("DUPLICATE_CODE");throw error;}
+ }
  constructor(private readonly settlement?:(id:number)=>Promise<{payrollRecordId:number;settledAt:Date}|undefined>) {}
  private async projectSettlement(row:DebtTransaction|undefined) {
   if(!row)return row;const evidence=await this.settlement?.(row.id);return evidence?{...row,settledInPayrollRecordId:evidence.payrollRecordId,settledAt:evidence.settledAt}:row;

@@ -170,7 +170,7 @@ export const positionRepository: PositionRepositoryPort = {
       .select({ id: shops.id })
       .from(shops)
       .where(and(eq(shops.id, numericId(shopId)), eq(shops.isActive, true)))
-      .limit(1);
+      .limit(1).for("share");
     return row !== undefined;
   },
 

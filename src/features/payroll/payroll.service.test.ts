@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createPayrollService } from "./payroll.service";
-import { createPayrollHarness, payrollActor } from "./payroll.test-support";
+import { createPayrollHarness, payrollActor, calculationFixture } from "./payroll.test-support";
 
 const configCommand = { actor: payrollActor(), requestId: "req-config", shopId: "1", branchId: null,
   configKey: "STANDARD_WORK_DAYS" as const, numericValue: "20.0000", unit: "days", effectiveFrom: "2026-01-01", effectiveTo: null };
@@ -55,4 +55,37 @@ describe("payroll configuration and period service", () => {
     await createPayrollService(harness).getPayrollRecord(payrollActor(), "20", "70", "read-record");
     expect(harness.calls.audit).toEqual(["payroll.record.read"]);
   });
+});
+
+
+test("configuration successor preserves prior value and ends its coverage before the new date",async()=>{
+  const harness=createPayrollHarness();
+  await createPayrollService(harness).supersedePayrollConfiguration({actor:payrollActor(),requestId:"successor",configurationId:"5",numericValue:"26",effectiveFrom:"2026-10-01",effectiveTo:null});
+  expect(harness.calls.endedConfigurations).toEqual([{id:"5",date:"2026-09-30"}]);
+  expect(harness.calls.audit).toContain("payroll.configuration.supersede");
+});
+test("configuration changes reject locked coverage, same-day overwrite and foreign-shop branches",async()=>{
+  const successor={actor:payrollActor(),requestId:"successor",configurationId:"5",numericValue:"26",effectiveFrom:"2026-10-01",effectiveTo:null};
+  const locked=createPayrollService(createPayrollHarness({configurationLocked:true}));
+  await expect(locked.createPayrollConfiguration(configCommand)).rejects.toMatchObject({code:"PAYROLL_PERIOD_LOCKED"});
+  await expect(locked.supersedePayrollConfiguration(successor)).rejects.toMatchObject({code:"PAYROLL_PERIOD_LOCKED"});
+  await expect(createPayrollService(createPayrollHarness()).supersedePayrollConfiguration({...successor,effectiveFrom:"2026-01-01"})).rejects.toMatchObject({code:"VALIDATION_ERROR"});
+  await expect(createPayrollService(createPayrollHarness({branchInShop:false})).createPayrollConfiguration({...configCommand,branchId:"9"})).rejects.toMatchObject({code:"RESOURCE_NOT_FOUND"});
+});
+test("configuration succession rejects archived shops and branches before ending history",async()=>{
+  const successor={actor:payrollActor(),requestId:"successor",configurationId:"5",numericValue:"26",effectiveFrom:"2026-10-01",effectiveTo:null};
+  for(const options of [{shopExists:false},{branchInShop:false}]) {
+    const harness=createPayrollHarness({...options,configurationBranchId:"2"});
+    await expect(createPayrollService(harness).supersedePayrollConfiguration(successor)).rejects.toMatchObject({code:"RESOURCE_NOT_FOUND"});
+    expect(harness.calls.endedConfigurations).toEqual([]);
+  }
+});
+
+test("large but valid input rates produce a blocker rather than numeric database overflow",async()=>{
+  const input=calculationFixture();input.baseSalary="9999999999.99";input.standardWorkDays="0.01";
+  const harness=createPayrollHarness({input});const service=createPayrollService(harness);
+  const preview=await service.previewPayrollPeriod(payrollActor(),"20","overflow-preview");
+  expect(preview.blockers.some(row=>row.code==="PAYROLL_CALCULATION_OUT_OF_RANGE")).toBe(true);expect(harness.calls.replace).toBe(0);
+  await expect(service.lockPayrollPeriod(payrollActor(),"20","overflow-lock")).rejects.toMatchObject({code:"PAYROLL_CALCULATION_OUT_OF_RANGE"});
+  expect(harness.calls.replace).toBe(0);expect(harness.calls.settle).toBe(0);
 });

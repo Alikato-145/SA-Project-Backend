@@ -16,10 +16,11 @@ const adjustment = { id: "60", originalPayrollRecordId: "70", appliedPayrollPeri
 const calls: string[] = [];
 const service: PayrollControllerService = {
   getPayrollAccess: () => ({ canMutate: true, readableBranchIds: null }),
+  supersedePayrollConfiguration:async()=>configuration,
   createPayrollConfiguration: async () => { calls.push("create-config"); return configuration; },
   listPayrollConfigurations: async () => [configuration],
   createPayrollPeriod: async () => { calls.push("create-period"); return period; },
-  listPayrollPeriods: async () => [period], getPayrollPeriod: async () => ({ period, records: [], blockers: [] }),
+  listPayrollPeriods: async () => [period], getPayrollReadiness: async () => ({ checks: [], canLock: false, canExport: false, employeeCount: 0 }), getPayrollPeriod: async () => ({ period, records: [], blockers: [] }),
   getPayrollRecord: async () => ({ id: "70", periodId: "20", status: "locked", ...calculatePayroll(calculationFixture()) }),
   previewPayrollPeriod: async () => ({ period: { ...period, status: "previewed" }, records: [calculatePayroll(calculationFixture())], blockers: [] }),
   lockPayrollPeriod: async () => ({ period: { ...period, status: "locked" }, records: [calculatePayroll(calculationFixture())], blockers: [] }),

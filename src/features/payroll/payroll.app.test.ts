@@ -14,10 +14,11 @@ const unsupported = async (): Promise<never> => { throw new Error("not used by s
 const service: PayrollControllerService = {
   getPayrollAccess: () => ({ canMutate: true, readableBranchIds: null }),
   createPayrollConfiguration: unsupported,
+  supersedePayrollConfiguration: unsupported,
   listPayrollConfigurations: async () => [],
   createPayrollPeriod: unsupported,
   listPayrollPeriods: async () => [period],
-  getPayrollPeriod: async () => ({ period, records: [], blockers: [] }),
+  getPayrollReadiness: async () => ({ checks: [], canLock: false, canExport: false, employeeCount: 0 }), getPayrollPeriod: async () => ({ period, records: [], blockers: [] }),
   getPayrollRecord: unsupported,
   previewPayrollPeriod: unsupported,
   lockPayrollPeriod: unsupported,
@@ -38,6 +39,7 @@ const authenticationService: UserAccountService = {
     };
   },
   async logout() {},
+  async changePassword() {},
   async getCurrentActor() {
     return {
       account: { id: "1", username: "admin", status: "active", employee: null },

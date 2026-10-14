@@ -1,5 +1,5 @@
 import { ApplicationError } from "../../core/errors/application.error";
-import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, gte, inArray, lte, sql } from "drizzle-orm";
 import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import {
   leaveApprovalActions,
@@ -9,6 +9,8 @@ import {
   leaveTypes,
 } from "./leave.schema";
 import type { LeaveDay, LeaveQuota, LeaveRequest, LeaveType, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
+import { attachments } from "../attachment/attachment.schema";
+import type { LeaveTypeCommand } from "./leave.admin.validation";
 
 export class LeaveError extends ApplicationError {
   constructor(public readonly code:
@@ -28,6 +30,7 @@ export type LeaveSession = {
   lockEmployee(employeeId: number): Promise<void>;
   findOverlap(employeeId: number, startDate: string, endDate: string, exceptId?: number): Promise<boolean>;
   findType(id: number): Promise<LeaveType | undefined>;
+  hasAttachment(requestId: number): Promise<boolean>;
   insertRequest(command: SubmitLeaveCommand, requestedDays: number, actorId: number): Promise<LeaveRequest>;
   insertDays(requestId: number, leaveTypeId: number, dates: string[], deductible: boolean): Promise<void>;
   findRequest(id: number): Promise<LeaveRequest | undefined>;
@@ -54,10 +57,30 @@ const pgCode = (error: unknown): string | undefined => {
 };
 
 export class DrizzleLeaveRepository implements LeaveRepository {
+ async listTypes() { return operationExecutor().query.leaveTypes.findMany({ orderBy: [leaveTypes.id] }); }
+ async findTypeForUpdate(id:number) { return (await operationExecutor().select().from(leaveTypes).where(eq(leaveTypes.id,id)).for("update"))[0]; }
+ async hasTypeReferences(id:number) {
+  return Boolean(await operationExecutor().query.leaveRequests.findFirst({ where: sql`${leaveRequests.originalLeaveTypeId} = ${id} or ${leaveRequests.finalLeaveTypeId} = ${id}`, columns: { id:true } })) || Boolean(await operationExecutor().query.leaveQuotas.findFirst({ where: eq(leaveQuotas.leaveTypeId,id), columns:{id:true} }));
+ }
+ async saveType(command:LeaveTypeCommand,id?:number) {
+  try {
+   return id ? (await operationExecutor().update(leaveTypes).set({...command,updatedAt:new Date()}).where(eq(leaveTypes.id,id)).returning())[0]! : (await operationExecutor().insert(leaveTypes).values(command).returning())[0]!;
+  } catch(error) { if(pgCode(error)==="23505")throw new ApplicationError("DUPLICATE_CODE");throw error; }
+ }
+ async findQuotaForUpdate(employeeId:number,typeId:number,year:number) { return (await operationExecutor().select().from(leaveQuotas).where(and(eq(leaveQuotas.employeeId,employeeId),eq(leaveQuotas.leaveTypeId,typeId),eq(leaveQuotas.quotaYear,year))).for("update"))[0]; }
+ async saveQuota(employeeId:number,typeId:number,year:number,entitledDays:string,id?:number) {
+  return id ? (await operationExecutor().update(leaveQuotas).set({entitledDays,lastRecalculatedAt:new Date(),updatedAt:new Date()}).where(eq(leaveQuotas.id,id)).returning())[0]! : (await operationExecutor().insert(leaveQuotas).values({employeeId,leaveTypeId:typeId,quotaYear:year,entitledDays,usedDays:"0",lastRecalculatedAt:new Date()}).returning())[0]!;
+ }
  async listActiveTypes() { return operationExecutor().query.leaveTypes.findMany({where:eq(leaveTypes.isActive,true)}); }
  async listQuotas(employeeId:number,year:number) { return operationExecutor().query.leaveQuotas.findMany({where:and(eq(leaveQuotas.employeeId,employeeId),eq(leaveQuotas.quotaYear,year))}); }
  async findById(id:number) { return operationExecutor().query.leaveRequests.findFirst({where:eq(leaveRequests.id,id)}); }
- async history(id:number) { return operationExecutor().query.leaveApprovalActions.findMany({where:eq(leaveApprovalActions.leaveRequestId,id),orderBy:[leaveApprovalActions.actedAt,leaveApprovalActions.id]}); }
+ async history(id:number) {
+   return operationExecutor().select({...getTableColumns(leaveApprovalActions),
+     actorUsername:sql<string>`(select username from user_accounts where id = ${leaveApprovalActions.actorUserAccountId})`,
+     fromLeaveTypeName:sql<string|null>`(select name_th from leave_types where id = ${leaveApprovalActions.fromLeaveTypeId})`,
+     toLeaveTypeName:sql<string|null>`(select name_th from leave_types where id = ${leaveApprovalActions.toLeaveTypeId})`,
+   }).from(leaveApprovalActions).where(eq(leaveApprovalActions.leaveRequestId,id)).orderBy(leaveApprovalActions.actedAt,leaveApprovalActions.id);
+ }
 
   async withTransaction<T>(work: (session: LeaveSession) => Promise<T>): Promise<T> {
     try {
@@ -78,6 +101,7 @@ export class DrizzleLeaveRepository implements LeaveRepository {
             return rows.length > 0;
           },
           findType: async (id) => tx.query.leaveTypes.findFirst({ where: eq(leaveTypes.id, id) }),
+          hasAttachment: async (id) => Boolean(await tx.query.attachments.findFirst({ where: eq(attachments.leaveRequestId, id), columns: { id: true } })),
           insertRequest: async (command, requestedDays, actorId) => {
             const [row] = await tx.insert(leaveRequests).values({
               employeeId: command.employeeId,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import Elysia from "elysia";
+import { SignJWT } from "jose";
 import { isApplicationError } from "../errors/application.error";
 import {
   createAuthPlugin,
@@ -58,21 +59,11 @@ const createHarness = (loader: AuthenticatedActorLoader) =>
     .post("/login", () => ({ ok: true }));
 
 const issueToken = async (loader: AuthenticatedActorLoader) => {
-  const issuer = new Elysia()
-    .use(
-      createAuthPlugin({
-        jwtSecret,
-        allowedOrigins: [allowedOrigin],
-        sessionTtlSeconds: 28_800,
-        actorLoader: loader,
-        now: () => now,
-      }),
-    )
-    .get("/issue", ({ sessionJwt }) =>
-      sessionJwt.sign({ sub: "42", iat: true, exp: Math.floor(now.getTime() / 1000) + 28_800 }),
-    );
-
-  return (await issuer.handle(new Request("http://test/issue"))).text();
+  void loader;
+  return new SignJWT({ sub: "42" }).setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt(Math.floor(now.getTime() / 1000))
+    .setExpirationTime(Math.floor(now.getTime() / 1000) + 28_800)
+    .sign(new TextEncoder().encode(jwtSecret));
 };
 
 const protectedRequest = (token?: string) => {

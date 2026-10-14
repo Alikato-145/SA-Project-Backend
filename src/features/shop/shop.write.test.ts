@@ -42,6 +42,7 @@ const setup = (overrides: Record<string, unknown> = {}) => {
       current = { ...current, ...input, updatedAt: new Date("2026-09-22T01:00:00.000Z") };
       return current;
     },
+    async hasActiveChildren() { return false; },
     async deactivate(_executor: unknown, id: string) {
       calls.push({ operation: "deactivate", input: { id } });
       if (current.id !== id || !current.isActive) return null;
@@ -157,6 +158,14 @@ describe("shop writes", () => {
       actor: actor("OWNER", "all"), requestId: "duplicate",
       code: "HQ", name: "Duplicate",
     })).rejects.toMatchObject({ code: "DUPLICATE_CODE" });
+  });
+
+  test("blocks parent deactivation before mutation when active children remain", async () => {
+    const fixture = setup({ async hasActiveChildren() { return true; } });
+    await expect(fixture.service.deactivateShop({
+      actor: actor("OWNER", "all"), requestId: "active-children", shopId: "2", reason: "Close",
+    })).rejects.toMatchObject({ code: "STATE_CONFLICT" });
+    expect(fixture.calls.some(call => call.operation === "deactivate")).toBe(false);
   });
 
   test("deactivates once with a trimmed audit reason and old/new snapshots", async () => {

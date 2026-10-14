@@ -76,6 +76,7 @@ const shopFixture = (): DeactivationFixture => {
   const observed = auditFixture();
   const repository = {
     async findById() { return record; },
+    async hasActiveChildren() { return false; },
     async deactivate() {
       if (!record.isActive) return null;
       record = { ...record, isActive: false };
@@ -101,6 +102,7 @@ const branchFixture = (): DeactivationFixture => {
   const observed = auditFixture();
   const repository = {
     async findById() { return record; },
+    async hasActiveChildren() { return false; },
     async deactivate() {
       if (!record.isActive) return null;
       record = { ...record, isActive: false };
@@ -126,6 +128,7 @@ const departmentFixture = (): DeactivationFixture => {
   const observed = auditFixture();
   const repository = {
     async findById() { return record; },
+    async hasActiveChildren() { return false; },
     async deactivate() {
       if (!record.isActive) return null;
       record = { ...record, isActive: false };
@@ -151,6 +154,7 @@ const positionFixture = (): DeactivationFixture => {
   const observed = auditFixture();
   const repository = {
     async findById() { return record; },
+    async hasActiveChildren() { return false; },
     async deactivate() {
       if (!record.isActive) return null;
       record = { ...record, isActive: false };

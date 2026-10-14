@@ -46,6 +46,7 @@ const setup = (options: { active?: boolean; failDomainAudit?: boolean } = {}) =>
     async findById() { return record; },
     async insert() { throw new Error("not used"); },
     async update() { throw new Error("not used"); },
+    async hasActiveChildren() { return false; },
     async deactivate() {
       if (!record.isActive) return null;
       record = { ...record, isActive: false, updatedAt: new Date() };

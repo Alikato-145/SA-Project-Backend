@@ -35,10 +35,16 @@ interface ServiceCalls {
   login: Parameters<UserAccountService["login"]>[];
   logout: Parameters<UserAccountService["logout"]>[];
   me: Parameters<UserAccountService["getCurrentActor"]>[];
+  changePassword: Parameters<UserAccountService["changePassword"]>[];
 }
 
 const setup = (overrides: Partial<UserAccountService> = {}) => {
-  const calls: ServiceCalls = { login: [], logout: [], me: [] };
+  const calls: ServiceCalls = {
+    login: [],
+    logout: [],
+    me: [],
+    changePassword: [],
+  };
   const service: UserAccountService = {
     async login(command) {
       calls.login.push([command]);
@@ -50,6 +56,9 @@ const setup = (overrides: Partial<UserAccountService> = {}) => {
     async getCurrentActor(command) {
       calls.me.push([command]);
       return actor;
+    },
+    async changePassword(command) {
+      calls.changePassword.push([command]);
     },
     ...overrides,
   };
@@ -195,6 +204,39 @@ describe("A1 authentication route contract", () => {
     expect(cookie).toContain("max-age=0");
     expect(cookie).toContain("path=/");
     expect(cookie).toContain("httponly");
+  });
+
+  test("change password forwards the session and returns no credential data", async () => {
+    const { app, calls } = setup();
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/auth/change-password", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "haris_session=current-token",
+          origin,
+          "x-request-id": "request-change-password",
+        },
+        body: JSON.stringify({
+          current_password: "temporary-password",
+          new_password: "new-password-123",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: { password_changed: true },
+      request_id: "request-change-password",
+    });
+    expect(calls.changePassword).toEqual([
+      [{
+        token: "current-token",
+        currentPassword: "temporary-password",
+        newPassword: "new-password-123",
+        requestId: "request-change-password",
+      }],
+    ]);
   });
 
   test("service failures use the stable public envelope and same request ID", async () => {

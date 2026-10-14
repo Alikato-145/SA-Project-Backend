@@ -66,6 +66,7 @@ const createInMemoryRepository = (): ShopRepositoryPort => ({
   async findById() { throw new Error("not used"); },
   async insert() { throw new Error("not used"); },
   async update() { throw new Error("not used"); },
+  async hasActiveChildren() { return false; },
   async deactivate() { throw new Error("not used"); },
 });
 

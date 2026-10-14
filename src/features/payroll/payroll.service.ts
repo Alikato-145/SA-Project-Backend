@@ -1,10 +1,12 @@
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
 import { assertPayrollMutationAccess, assertPayrollRecordAccess, payrollReadableBranchIds } from "./payroll.authorization";
-import { calculatePayroll, payrollRecordTotalsReconcile } from "./calculation/payroll-calculator";
+import { calculatePayroll, payrollRecordTotalsReconcile, payrollRecordValuesFitStorage } from "./calculation/payroll-calculator";
 import { formatMoney, money } from "./calculation/decimal";
 import type { DrizzlePayrollInputRepository, PayrollInputMutation, PayrollInputProvider, PayrollRepository, PayrollRepositorySession } from "./payroll.repository";
 import { serializePayrollInputs } from "./payroll.input-lock.repository";
+import { summarizePayrollReadiness } from "./payroll.readiness.service";
+import type { PayrollReadiness } from "./payroll.readiness.types";
 import type {
   CreatePayrollConfigurationCommand,
   CreatePayrollPeriodCommand,
@@ -15,7 +17,7 @@ import type {
   PayrollPeriodDetail,
   PayrollPreviewResult,
 } from "./payroll.types";
-import { assertPayrollRange, parsePayrollConfigurationKey, parsePayrollDecimal, parsePayrollId } from "./payroll.validation";
+import { assertPayrollConfigurationValue, assertPayrollRange, assertPayrollMonthRange, parsePayrollConfigurationKey, parsePayrollMoney, parsePayrollId } from "./payroll.validation";
 
 export interface PayrollAuditPort {
   record(executor: DatabaseExecutor, event: {
@@ -75,17 +77,44 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
     assertPayrollMutationAccess(command.actor);
     parsePayrollConfigurationKey(command.configKey, command.unit);
     assertPayrollRange(command.effectiveFrom, command.effectiveTo);
-    parsePayrollDecimal(command.numericValue, "numeric_value");
+    assertPayrollConfigurationValue(command.configKey, command.numericValue);
     return dependencies.repository.withTransaction(async (session) => {
       if (!(await session.findActiveShop(command.shopId))) {
         throw new ApplicationError("RESOURCE_NOT_FOUND");
       }
+      await serializePayrollInputs(session.executor);
+      if(command.branchId!==null&&!(await session.findBranchInShop(command.branchId,command.shopId)))throw new ApplicationError("RESOURCE_NOT_FOUND");
+      if(await session.configurationRangeIsLocked(command.shopId,command.effectiveFrom,command.effectiveTo))throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
       if (await session.findConfigurationOverlap(command)) {
         throw new ApplicationError("PAYROLL_CONFIGURATION_OVERLAP");
       }
       const created = await session.insertConfiguration({ ...command, actorId: command.actor.accountId });
       await dependencies.audit.record(session.executor, { actorId: command.actor.accountId, requestId: command.requestId,
         action: "payroll.configuration.create", tableName: "payroll_configurations", recordId: created.id });
+      return created;
+    });
+  },
+
+  async supersedePayrollConfiguration(command:{actor:PayrollActor;requestId:string;configurationId:string;numericValue:string;effectiveFrom:string;effectiveTo:string|null}) {
+    assertPayrollMutationAccess(command.actor);
+    parsePayrollId(command.configurationId,"configuration_id");
+    assertPayrollRange(command.effectiveFrom,command.effectiveTo);
+    return dependencies.repository.withTransaction(async session=>{
+      await serializePayrollInputs(session.executor);
+      const previous=await session.findConfigurationForUpdate(command.configurationId);
+      if(!previous)throw new ApplicationError("RESOURCE_NOT_FOUND");
+      if(!(await session.findActiveShop(previous.shopId)) ||
+        (previous.branchId!==null && !(await session.findBranchInShop(previous.branchId,previous.shopId))))throw new ApplicationError("RESOURCE_NOT_FOUND");
+      assertPayrollConfigurationValue(previous.configKey,command.numericValue);
+      if(command.effectiveFrom<=previous.effectiveFrom||(previous.effectiveTo!==null&&command.effectiveFrom>previous.effectiveTo))throw new ApplicationError("VALIDATION_ERROR");
+      // Ending the prior row only changes its coverage from the successor date onward.
+      if(await session.configurationRangeIsLocked(previous.shopId,command.effectiveFrom,null))throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
+      const priorEnd=new Date(`${command.effectiveFrom}T00:00:00Z`);priorEnd.setUTCDate(priorEnd.getUTCDate()-1);
+      await session.endConfiguration(previous.id,priorEnd.toISOString().slice(0,10));
+      const next={shopId:previous.shopId,branchId:previous.branchId,configKey:previous.configKey,unit:previous.unit,numericValue:command.numericValue,effectiveFrom:command.effectiveFrom,effectiveTo:command.effectiveTo};
+      if(await session.findConfigurationOverlap(next))throw new ApplicationError("PAYROLL_CONFIGURATION_OVERLAP");
+      const created=await session.insertConfiguration({...next,actorId:command.actor.accountId});
+      await dependencies.audit.record(session.executor,{actorId:command.actor.accountId,requestId:command.requestId,action:"payroll.configuration.supersede",tableName:"payroll_configurations",recordId:previous.id,reason:`Successor ${created.id} effective ${command.effectiveFrom}; prior value ${previous.numericValue}, new value ${created.numericValue}`});
       return created;
     });
   },
@@ -105,6 +134,7 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
 
   async createPayrollPeriod(command: CreatePayrollPeriodCommand): Promise<PayrollPeriodRecord> {
     assertPayrollMutationAccess(command.actor);
+    assertPayrollMonthRange(command.periodYear,command.periodMonth,command.startDate,command.endDate);
     if (command.endDate < command.startDate || command.periodMonth < 1 || command.periodMonth > 12) {
       throw new ApplicationError("VALIDATION_ERROR");
     }
@@ -134,9 +164,29 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
     const branches = payrollReadableBranchIds(actor);
     const period = await dependencies.repository.findPeriod(parsePayrollId(periodId, "period_id"));
     if (!period) throw new ApplicationError("PAYROLL_PERIOD_NOT_FOUND");
-    const result = { period, records: await dependencies.repository.listPeriodRecords(period.id, branches), blockers: [] };
+    const result = { period, records: await dependencies.repository.listPeriodRecords(period.id, branches), blockers: [], roster: await dependencies.repository.listPeriodRoster?.(period,branches) ?? [] };
     await auditRead(dependencies, actor, requestId, "payroll.period.read", "payroll_periods", period.id);
     return result;
+  },
+  async getPayrollReadiness(actor:PayrollActor,periodId:string,requestId?:string):Promise<PayrollReadiness> {
+    const branches=payrollReadableBranchIds(actor);
+    const period=await dependencies.repository.findPeriod(parsePayrollId(periodId,"period_id"));
+    if(!period)throw new ApplicationError("PAYROLL_PERIOD_NOT_FOUND");
+    if(!dependencies.repository.listReadinessFacts)throw new ApplicationError("STATE_CONFLICT");
+    const readiness=summarizePayrollReadiness(await dependencies.repository.listReadinessFacts(period,branches),period);
+    if(readiness.checks.every(row=>!row.requiredForLock||row.status==="ready")&&branches===null&&period.status!=="locked") {
+      await dependencies.repository.withTransaction(async session=>{
+        const loaded=await dependencies.inputs.load(session,period);
+        const records=loaded.inputs.map(calculatePayroll);
+        const issues=records.filter(record=>money(record.netPay)<0n||!payrollRecordTotalsReconcile(record)||!payrollRecordValuesFitStorage(record)).map(record=>({employeeId:record.employeeId,message:"เงินสุทธิติดลบ ยอดรวมไม่ตรง หรือจำนวนเงินเกินช่วงที่ระบบรองรับ",href:"/finance"}));
+        for(const blocker of loaded.blockers)issues.push({employeeId:blocker.employeeId ?? "",message:blocker.detail,href:"/payroll"});
+        readiness.checks.push({key:"calculation",label:"ยอดสุทธิและความถูกต้องของผลคำนวณ",status:issues.length?"invalid":"ready",issues,requiredForLock:true,requiredForExport:false});
+        readiness.canLock=readiness.canLock&&!issues.length&&!loaded.pendingApprovals;
+      });
+    }
+    if(branches!==null){readiness.canLock=false;readiness.canExport=false;}
+    await auditRead(dependencies,actor,requestId,"payroll.readiness.read","payroll_periods",period.id);
+    return readiness;
   },
 
   async getPayrollRecord(actor: PayrollActor, periodId: string, recordId: string, requestId?: string) {
@@ -159,13 +209,15 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
         if (period.status === "locked") throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
         const loaded = await dependencies.inputs.load(session, period);
         const blockers = [...loaded.blockers];
-        if (loaded.pendingApprovals) blockers.push({ code: "PAYROLL_APPROVALS_PENDING", employeeId: null, detail: "Approvals affecting the period remain pending." });
+        if(!loaded.inputs.length && !blockers.length)blockers.push({code:"PAYROLL_ASSIGNMENT_MISSING",employeeId:null,detail:"ไม่มีพนักงานที่มีประวัติการจ้างในงวดนี้ ให้ตรวจร้านและช่วงวันที่ก่อนคำนวณ"});
+        if (loaded.pendingApprovals) blockers.push({ code: "PAYROLL_APPROVALS_PENDING", employeeId: null, detail: "ยังมีคำขอลา OT เงินทดรอง หรือรายการปรับปรุงรออนุมัติ ให้ตรวจรายการเหล่านี้ก่อนล็อกรอบ" });
         const records = loaded.inputs.map(calculatePayroll);
+        for(const record of records)if(!payrollRecordValuesFitStorage(record))blockers.push({code:"PAYROLL_CALCULATION_OUT_OF_RANGE",employeeId:record.employeeId,detail:"จำนวนเงินคำนวณเกินช่วงที่ระบบรองรับ ให้ตรวจฐานเงินเดือน จำนวนวันมาตรฐาน และอัตราคำนวณก่อนล็อก"});
         if (records.some((record) => !payrollRecordTotalsReconcile(record))) blockers.push({
-          code: "PAYROLL_TOTAL_MISMATCH", employeeId: null, detail: "Calculated line items do not reconcile to record totals.",
+          code: "PAYROLL_TOTAL_MISMATCH", employeeId: null, detail: "ยอดรวมรายการไม่ตรงกับผลคำนวณ ให้ตรวจหลักฐานก่อนล็อกรอบ",
         });
         for (const record of records) if (money(record.netPay) < 0n) blockers.push({
-          code: "PAYROLL_NEGATIVE_NET_PAY", employeeId: record.employeeId, detail: "Calculated deductions exceed earnings.",
+          code: "PAYROLL_NEGATIVE_NET_PAY", employeeId: record.employeeId, detail: "รายการหักมากกว่ารายได้ ให้ตรวจเงินทดรอง ค่างวด หนี้ และรายการปรับปรุง",
         });
         if (blockers.length === 0) {
           await session.replaceCalculatedRecords(period.id, records, actor.accountId, false);
@@ -187,8 +239,10 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
         if (period.status === "locked") throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
         const loaded = await dependencies.inputs.load(session, period, { lockSources: true });
         if (loaded.pendingApprovals) throw new ApplicationError("PAYROLL_APPROVALS_PENDING");
-        if (loaded.blockers.length > 0) throw new ApplicationError(loaded.blockers[0].code);
+        if (loaded.blockers.length > 0) throw new ApplicationError(loaded.blockers[0].code,{publicMessage:loaded.blockers[0].detail});
+        if(!loaded.inputs.length)throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING",{publicMessage:"ไม่มีพนักงานที่มีประวัติการจ้างในงวดนี้ จึงยังล็อกรอบไม่ได้"});
         const records = loaded.inputs.map(calculatePayroll);
+        if(records.some(record=>!payrollRecordValuesFitStorage(record)))throw new ApplicationError("PAYROLL_CALCULATION_OUT_OF_RANGE");
         if (records.some((record) => !payrollRecordTotalsReconcile(record))) throw new ApplicationError("PAYROLL_TOTAL_MISMATCH");
         if (records.some((record) => money(record.netPay) < 0n)) throw new ApplicationError("PAYROLL_NEGATIVE_NET_PAY");
         await session.replaceCalculatedRecords(period.id, records, actor.accountId, true);
@@ -204,13 +258,16 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
   async requestPayrollAdjustment(command: { actor: PayrollActor; requestId: string; originalRecordId: string; targetPeriodId: string;
     direction: "earning" | "deduction"; amount: string; reason: string }): Promise<PayrollAdjustmentRecord> {
     assertPayrollMutationAccess(command.actor);
-    parsePayrollDecimal(command.amount, "amount", true);
+    parsePayrollMoney(command.amount, "amount", true);
     if (!command.reason.trim() || command.reason.length > 1000) throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
     return dependencies.repository.withTransaction(async (session) => {
+      await serializePayrollInputs(session.executor);
       const original = await session.findRecordState(command.originalRecordId);
       if (!original || original.status !== "locked") throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
       const target = await requirePeriod(session, command.targetPeriodId, true);
       if (target.status === "locked" || target.startDate <= original.periodEnd) throw new ApplicationError("PAYROLL_ADJUSTMENT_STATE_CONFLICT");
+      if(target.shopId!==original.shopId)throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID",{publicMessage:"งวดปลายทางต้องเป็นร้านเดียวกับรายการต้นทาง"});
+      if(!await session.hasAssignmentForPeriod(original.employeeId,target))throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING",{publicMessage:"ไม่มีประวัติการจ้างของพนักงานในงวดปลายทาง จึงยังนำส่วนต่างไปคำนวณไม่ได้"});
       const created = await session.insertAdjustment({ originalRecordId: command.originalRecordId,
         targetPeriodId: command.targetPeriodId, direction: command.direction, amount: command.amount,
         reason: command.reason.trim(), actorId: command.actor.accountId });
@@ -224,8 +281,14 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
     assertPayrollMutationAccess(actor);
     try {
       return await dependencies.repository.withTransaction(async (session) => {
+        await serializePayrollInputs(session.executor);
         const current = await session.findAdjustment(adjustmentId);
         if (!current || current.status !== "pending") throw new ApplicationError("PAYROLL_ADJUSTMENT_STATE_CONFLICT");
+        if(!current.appliedPayrollPeriodId)throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
+        const target=await requirePeriod(session,current.appliedPayrollPeriodId,true);
+        if(target.status==="locked")throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
+        const original=await session.findRecordState(current.originalPayrollRecordId);
+        if(decision==="approved" && (!original || target.shopId!==original.shopId || !await session.hasAssignmentForPeriod(original.employeeId,target)))throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING");
         const decided = await session.decideAdjustment(adjustmentId, decision, actor.accountId);
         await dependencies.audit.record(session.executor, { actorId: actor.accountId, requestId,
           action: `payroll.adjustment.${decision}`, tableName: "payroll_adjustments", recordId: decided.id, reason: decided.reason });
@@ -270,7 +333,7 @@ export const createPayrollInputService = (
     if (await repository.findLockedInputPeriod(executor, target)) throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
   },
   async projectAdvance(executor: DatabaseExecutor, command: { employeeId: number; date: string; amount: string; requestId?: number }): Promise<string> {
-    parsePayrollDecimal(command.amount, "amount", true);
+    parsePayrollMoney(command.amount, "amount", true);
     assertPayrollRange(command.date, command.date);
     await serializePayrollInputs(executor);
     const period = await repository.findProjectionPeriod(executor, command.employeeId, command.date);

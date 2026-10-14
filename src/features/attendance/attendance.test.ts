@@ -30,6 +30,16 @@ const access = (): AttendanceAccess => ({
 const unlocked = (): PayrollLockGuard => ({ async assertWorkDayCanBeCorrected() {} });
 
 describe("AttendanceService", () => {
+  test("late minutes belong only to late attendance and cannot exceed one day", async () => {
+    const store = makeRepository();
+    const service = new AttendanceService(store, access(), unlocked());
+    for (const command of [{ status: "absent" as const, lateMinutes: 10 }, { status: "present" as const, lateMinutes: 1 }, { status: "late" as const, lateMinutes: 0 }, { status: "late" as const, lateMinutes: 1441 }]) {
+      await expect(service.createManualWorkDay({ accountId: 7 }, { ...record, ...command })).rejects.toMatchObject({ code: "INVALID_ATTENDANCE" });
+      await expect(service.correctWorkDay({ accountId: 7 }, 1, command)).rejects.toMatchObject({ code: "INVALID_ATTENDANCE" });
+    }
+    expect(store.insertCalls).toBe(0);
+    expect(store.lastCorrection).toBeUndefined();
+  });
   test("checks scope and effective assignment before writing a manual record", async () => {
     const store = makeRepository();
     const denied = access();

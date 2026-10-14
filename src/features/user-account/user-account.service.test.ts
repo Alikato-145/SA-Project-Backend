@@ -97,6 +97,13 @@ class MemoryUserAccountRepository {
     return this.account?.username === username ? { ...this.account } : null;
   }
 
+  async findAuthenticationByIdForUpdate(
+    accountId: number,
+  ): Promise<AuthenticationAccountRecord | null> {
+    this.rowLockReads += 1;
+    return this.account?.id === accountId ? { ...this.account } : null;
+  }
+
   async findCurrentActorAccountById(
     accountId: number,
   ): Promise<CurrentActorAccountRecord | null> {
@@ -134,6 +141,15 @@ class MemoryUserAccountRepository {
     this.account = { ...this.account, ...update };
     return { ...this.account };
   }
+
+  async updatePassword(
+    accountId: number,
+    passwordHash: string,
+  ): Promise<AuthenticationAccountRecord | null> {
+    if (!this.account || this.account.id !== accountId) return null;
+    this.account = { ...this.account, passwordHash };
+    return { ...this.account };
+  }
 }
 
 const tokenService = (): SessionTokenService => ({
@@ -163,8 +179,9 @@ const fixture = (
     now: () => new Date(testTime),
     passwordVerifier: async (password) => {
       knownVerifications += 1;
-      return password === "correct";
+      return password === "correct" || password === "correct-current";
     },
+    passwordHasher: async (password) => `hashed:${password}`,
     unknownAccountPasswordVerifier: async () => {
       unknownVerifications += 1;
       return false;
@@ -424,5 +441,57 @@ describe("user account authentication service", () => {
       reason: "AUTH_REQUIRED",
       recordId: "self",
     });
+  });
+
+  test("changes the authenticated account password without auditing credentials", async () => {
+    const state = fixture();
+
+    await state.service.changePassword({
+      token: "token-12",
+      currentPassword: "correct",
+      newPassword: "new-password-123",
+      requestId: "password-change",
+    });
+
+    expect(state.repository.account?.passwordHash).toBe("hashed:new-password-123");
+    expect(state.repository.rowLockReads).toBe(1);
+    expect(state.writer.events).toHaveLength(1);
+    expect(state.writer.events[0]).toMatchObject({
+      action: "authentication.password.change.succeeded",
+      actorAccountId: "12",
+      recordId: "12",
+      reason: "self_service",
+    });
+    expect(JSON.stringify(state.writer.events)).not.toContain("correct");
+    expect(JSON.stringify(state.writer.events)).not.toContain("new-password-123");
+  });
+
+  test("rejects an incorrect current password and password reuse", async () => {
+    const state = fixture();
+
+    await expectCode(
+      state.service.changePassword({
+        token: "token-12",
+        currentPassword: "wrong",
+        newPassword: "new-password-123",
+        requestId: "password-wrong-current",
+      }),
+      "CURRENT_PASSWORD_INCORRECT",
+    );
+    await expectCode(
+      state.service.changePassword({
+        token: "token-12",
+        currentPassword: "correct-current",
+        newPassword: "correct-current",
+        requestId: "password-reused",
+      }),
+      "PASSWORD_UNCHANGED",
+    );
+
+    expect(state.repository.account?.passwordHash).toBe("stored-hash");
+    expect(state.writer.events.map((event) => event.action)).toEqual([
+      "authentication.password.change.failed",
+      "authentication.password.change.failed",
+    ]);
   });
 });

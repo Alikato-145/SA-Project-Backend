@@ -12,7 +12,10 @@ import {
   createUserAccountController,
   type UserAccountService,
 } from "./user-account.controller";
-import { loginRequestSchema } from "./user-account.validation";
+import {
+  changePasswordRequestSchema,
+  loginRequestSchema,
+} from "./user-account.validation";
 
 export interface UserAccountRoutesOptions {
   service: UserAccountService;
@@ -82,6 +85,16 @@ export const createUserAccountRoutes = (options: UserAccountRoutesOptions) => {
       });
       return response;
     })
+    .post(
+      "/change-password",
+      ({ body, cookie, requestId }) =>
+        controller.changePassword({
+          token: sessionValue(cookie[SESSION_COOKIE_NAME].value),
+          body,
+          requestId,
+        }),
+      { body: changePasswordRequestSchema },
+    )
     .get("/me", ({ cookie, requestId }) =>
       controller.me({
         token: sessionValue(cookie[SESSION_COOKIE_NAME].value),

@@ -49,6 +49,7 @@ const actor = (roleCode: "OWNER" | "HR" | "BRANCH_MANAGER"): AuthenticatedActor 
 
 interface SetupOptions {
   shopActive?: boolean;
+  activeChildren?: boolean;
   auditFailure?: Error;
   deactivateConflict?: boolean;
 }
@@ -89,6 +90,7 @@ const setup = (options: SetupOptions = {}) => {
       stored = { ...stored, ...input, updatedAt: fixedNow };
       return stored;
     },
+    async hasActiveChildren() { return options.activeChildren ?? false; },
     async deactivate(_executor, id) {
       repositoryCalls.push({ kind: "deactivate", value: id });
       if (options.deactivateConflict) return null;
@@ -288,6 +290,14 @@ describe("branch write service", () => {
       code: "ROLLBACK", name: "Rollback", address: null, timezone: "Asia/Bangkok",
     })).rejects.toBe(failure);
     expect(state.getStored()).toBe(before);
+  });
+
+  test("blocks branch deactivation while active departments remain", async () => {
+    const fixture = setup({ activeChildren: true });
+    await expect(fixture.service.deactivateBranch({
+      actor: actor("OWNER"), requestId: "active-departments", id: "7", reason: "Close",
+    })).rejects.toMatchObject({ code: "STATE_CONFLICT" });
+    expect(fixture.repositoryCalls.some(call => call.kind === "deactivate")).toBe(false);
   });
 
   test("deactivates once with a trimmed audit reason and no parent mutation", async () => {

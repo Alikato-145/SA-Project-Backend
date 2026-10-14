@@ -11,6 +11,11 @@ import type {
   PayrollPeriodRecord,
 } from "./payroll.types";
 import type { PayrollRecordDetail } from "./payroll.types";
+import type { PayrollReadiness } from "./payroll.readiness.types";
+export const toPayrollReadinessResponseDto=(value:PayrollReadiness)=>({
+  can_lock:value.canLock,can_export:value.canExport,employee_count:value.employeeCount,
+  checks:value.checks.map(check=>({key:check.key,label:check.label,status:check.status,required_for_lock:check.requiredForLock,required_for_export:check.requiredForExport,issues:check.issues.map(issue=>({message:issue.message,href:issue.href,...(issue.employeeId?{employee_id:issue.employeeId}:{}),...(issue.branchId?{branch_id:issue.branchId}:{}),...(issue.dates?{dates:issue.dates}:{}),...(issue.configKeys?{config_keys:issue.configKeys}:{})}))})),
+});
 
 export const toPayrollConfigurationResponseDto = (record: PayrollConfigurationRecord): PayrollConfigurationResponseDto => ({
   id: record.id, shop_id: record.shopId, branch_id: record.branchId, config_key: record.configKey,

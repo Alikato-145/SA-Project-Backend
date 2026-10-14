@@ -1,3 +1,4 @@
+import type { EmploymentAssignmentService } from "../employment-assignment/employment-assignment.service";
 import { createActionContext } from "../../core/audit/action-context";
 import type { ActionObserver } from "../../core/audit/action-observer";
 import type { DomainAuditObserver } from "../../core/audit/domain-audit-observer";
@@ -28,6 +29,7 @@ export interface EmployeeServiceDependencies {
   actions: ActionObserver;
   domain?: DomainAuditObserver;
   today?: () => string;
+  employmentTermination?:Pick<EmploymentAssignmentService,"endAssignmentsForTermination">;
   onboarding?: { assignment: OnboardingAssignmentPort; bank: OnboardingBankPort; holiday: OnboardingHolidayPort; account: OnboardingAccountCreationPort };
 }
 
@@ -151,6 +153,11 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
           const reason = command.reason.trim(); if (!reason || reason.length > 500) throw new ApplicationError("VALIDATION_ERROR");
           if (command.status === "terminated") { if (!command.terminatedAt) throw new ApplicationError("VALIDATION_ERROR"); parseBusinessDate(command.terminatedAt, "terminated_at"); if (command.terminatedAt < current.hireDate) throw new ApplicationError("VALIDATION_ERROR"); }
           else if (command.terminatedAt !== null) throw new ApplicationError("VALIDATION_ERROR");
+          if(current.terminatedAt!==null&&command.status==="terminated"&&current.terminatedAt!==command.terminatedAt)throw new ApplicationError("STATE_CONFLICT",{publicMessage:"วันที่สิ้นสุดการจ้างถูกบันทึกเป็นประวัติแล้ว ไม่เปลี่ยนทับผ่านการเปลี่ยนสถานะทั่วไป"});
+          if(command.status==="terminated") {
+            if(!dependencies.employmentTermination)throw new Error("Employee termination dependencies are not configured");
+            await dependencies.employmentTermination.endAssignmentsForTermination(executor,{actor:command.actor,requestId:command.requestId,employeeId:id,date:command.terminatedAt!,reason});
+          }
           const updated = await writes.repository.updateStatus(executor, id, command.status, command.status === "terminated" ? command.terminatedAt : null);
           if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
           const receipt = await writes.domain.record(executor, context, { oldData: snapshot(current), newData: snapshot(updated), reason });

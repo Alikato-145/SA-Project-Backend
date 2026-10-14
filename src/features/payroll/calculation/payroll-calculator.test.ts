@@ -26,6 +26,22 @@ const fixture = (): PayrollCalculationInput => ({
 });
 
 describe("payroll calculator", () => {
+  test("non-working holiday evidence adds no salary, welfare or deductions", () => {
+    const input = fixture();
+    input.workDays = ["weekly_holiday", "public_holiday"].map((status, index) => ({ id: String(index), date: `2026-09-0${index + 6}`, status: status as "weekly_holiday" | "public_holiday", lateMinutes: 0, deductible: false }));
+    input.overtime = []; input.deductions = []; input.adjustments = [];
+    const result = calculatePayroll(input);
+    expect(result.totalEarnings).toBe("0.00"); expect(result.totalDeductions).toBe("0.00");
+    expect(result.items.filter(item => item.sourceTable === "work_day_records")).toHaveLength(2);
+  });
+  test("legacy absence evidence never adds a second lateness deduction", () => {
+    const input = fixture();
+    input.workDays = [{ id: "absence", date: "2026-09-02", status: "absent", lateMinutes: 15, deductible: true }];
+    const result = calculatePayroll(input);
+    expect(result.items.filter(item => item.itemType === "absence")).toHaveLength(1);
+    expect(result.items.filter(item => item.itemType === "lateness")).toHaveLength(0);
+    expect(result.items.find(item => item.sourceId === "absence" && item.itemType === "other")?.description).toContain("late_minutes=15");
+  });
   test("creates distinct traceable lines and reconciles totals", () => {
     const result = calculatePayroll(fixture());
     expect(result.items.filter((item) => item.itemType === "base_salary")).toHaveLength(4);

@@ -63,6 +63,11 @@ const envSchema = z.object({
     .refine((value) => value.startsWith("postgresql://") || value.startsWith("postgres://"), {
       message: "must use the PostgreSQL postgresql:// or postgres:// scheme",
     }),
+}).superRefine((value,context)=>{
+  if(value.NODE_ENV!=="production")return;
+  if(value.AUTH_JWT_SECRET.startsWith("development-only")||value.AUTH_JWT_SECRET.startsWith("replace-with"))context.addIssue({code:"custom",path:["AUTH_JWT_SECRET"],message:"production requires a unique secret"});
+  if(value.AUTH_ALLOWED_ORIGINS.some(origin=>!origin.startsWith("https://")))context.addIssue({code:"custom",path:["AUTH_ALLOWED_ORIGINS"],message:"production origins must use HTTPS"});
+  if(value.EMPLOYEE_BANK_ENCRYPTION_KEYS.includes("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="))context.addIssue({code:"custom",path:["EMPLOYEE_BANK_ENCRYPTION_KEYS"],message:"production must not use the demo key"});
 });
 
 const parsed = envSchema.safeParse(process.env);

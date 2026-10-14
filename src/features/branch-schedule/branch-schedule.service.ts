@@ -18,8 +18,9 @@ export type BranchScheduleAccess = {
   assertCanManageBranch(actor: ScheduleActor, branchId: number): Promise<void>;
 };
 
+const validTime = /^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/;
 const hasCompleteHours = (start?: string | null, close?: string | null) =>
-  Boolean(start) && Boolean(close) && start! < close!;
+  Boolean(start && close && validTime.test(start) && validTime.test(close) && start.padEnd(8, ":00") < close.padEnd(8, ":00"));
 
 export class BranchScheduleService {
   constructor(
@@ -91,12 +92,10 @@ export class BranchScheduleService {
 
   private assertSchedule(command: CreateBranchScheduleCommand) {
     realDate(command.effectiveFrom);if(command.effectiveTo)realDate(command.effectiveTo);
-    const time=/^(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9])?$/;
-    if(!time.test(command.workStartTime)||!time.test(command.standardCloseTime))throw new BranchScheduleError("INVALID_SCHEDULE");
+    if(!hasCompleteHours(command.workStartTime,command.standardCloseTime))throw new BranchScheduleError("INVALID_SCHEDULE");
 
     if (
       command.lateGraceMinutes < 0 ||
-      command.standardCloseTime <= command.workStartTime ||
       (command.effectiveTo !== null && command.effectiveTo !== undefined && command.effectiveTo < command.effectiveFrom)
     ) {
       throw new BranchScheduleError("INVALID_SCHEDULE");

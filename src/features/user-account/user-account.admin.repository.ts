@@ -1,4 +1,5 @@
-import { and, asc, count, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { ApplicationError } from "../../core/errors/application.error";
 import type { AccountStatus, RoleCode, RoleScope } from "../../core/auth/auth.types";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { employees } from "../employee/employee.schema";
@@ -56,6 +57,7 @@ export interface UserAccountAdminRepository {
   findByUsername(executor: DatabaseExecutor, username: string): Promise<{ id: string } | null>;
   findByEmployeeId(executor: DatabaseExecutor, employeeId: string): Promise<{ id: string } | null>;
   employeeExists(executor: DatabaseExecutor, employeeId: string): Promise<boolean>;
+  linkEmployee(executor: DatabaseExecutor, accountId: string, employeeId: string): Promise<AdminAccountRecord | null>;
   insert(executor: DatabaseExecutor, input: { username: string; employeeId: string | null; passwordHash: string }): Promise<AdminAccountRecord>;
   updateStatus(executor: DatabaseExecutor, accountId: string, status: "active" | "disabled"): Promise<AdminAccountRecord | null>;
   updatePassword(executor: DatabaseExecutor, accountId: string, passwordHash: string): Promise<AdminAccountRecord | null>;
@@ -154,6 +156,19 @@ export const userAccountAdminRepository: UserAccountAdminRepository = {
     const [row] = await executor.select({ id: employees.id }).from(employees)
       .where(eq(employees.id, numericId(employeeId))).limit(1);
     return Boolean(row);
+  },
+
+  async linkEmployee(executor, accountId, employeeId) {
+    try {
+      const [row] = await executor.update(userAccounts).set({ employeeId: numericId(employeeId), updatedAt: new Date() })
+        .where(and(eq(userAccounts.id, numericId(accountId)), isNull(userAccounts.employeeId)))
+        .returning({ id: userAccounts.id });
+      return row ? this.findById(executor, String(row.id)) : null;
+    } catch (cause) {
+      const error = cause as { code?: string; cause?: { code?: string } };
+      if ((error.code ?? error.cause?.code) === "23505") throw new ApplicationError("EMPLOYEE_ACCOUNT_ALREADY_EXISTS");
+      throw cause;
+    }
   },
 
   async insert(executor, input) {

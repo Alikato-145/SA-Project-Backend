@@ -56,6 +56,10 @@ export const createUserAccountAdminRoutes = (options: UserAccountAdminRoutesOpti
       params: t.Object({ accountId: decimalId }, { additionalProperties: false }),
       body: t.Object({ status: t.Union([t.Literal("active"), t.Literal("disabled")]), reason: t.String({ minLength: 1, maxLength: 500 }) }, { additionalProperties: false }),
     })
+    .post("/:accountId/employee", ({ actor, requestId, params, body }) => controller.linkEmployee({ actor, requestId, accountId: params.accountId, body }), {
+      params: t.Object({ accountId: decimalId }, { additionalProperties: false }),
+      body: t.Object({ employee_id: decimalId, reason: t.String({ minLength: 1, maxLength: 500 }) }, { additionalProperties: false }),
+    })
     .post("/:accountId/reset-password", ({ actor, requestId, params, body }) => controller.resetPassword({ actor, requestId, accountId: params.accountId, body }), {
       params: t.Object({ accountId: decimalId }, { additionalProperties: false }), body: reasonBody,
     })

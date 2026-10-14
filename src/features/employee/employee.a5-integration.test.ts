@@ -17,11 +17,11 @@ const service = createEmployeeOperationContextService({
     if (employeeId === 7) {
       if (date < "2026-09-01") return undefined;
       return date < "2026-09-15"
-        ? { employeeId, branchId: 10, departmentId: 20, shopId: 1, baseSalary: "20000.00" }
-        : { employeeId, branchId: 11, departmentId: 21, shopId: 1, baseSalary: "25000.00" };
+        ? { employeeId, branchId: 10, branchName:"สาขาทดสอบ", departmentId: 20, shopId: 1, baseSalary: "20000.00" }
+        : { employeeId, branchId: 11, branchName:"สาขาทดสอบ", departmentId: 21, shopId: 1, baseSalary: "25000.00" };
     }
-    if (employeeId === 8) return { employeeId, branchId: 10, departmentId: 22, shopId: 1, baseSalary: "18000.00" };
-    if (employeeId === 9) return { employeeId, branchId: 12, departmentId: 20, shopId: 2, baseSalary: "18000.00" };
+    if (employeeId === 8) return { employeeId, branchId: 10, branchName:"สาขาทดสอบ", departmentId: 22, shopId: 1, baseSalary: "18000.00" };
+    if (employeeId === 9) return { employeeId, branchId: 12, branchName:"สาขาทดสอบ", departmentId: 20, shopId: 2, baseSalary: "18000.00" };
     return undefined;
   },
   async branchShop() { return 1; },
@@ -36,8 +36,8 @@ const deny = async (person: Person, employeeId: number, date: string, action: "r
 
 describe("A5 dated employee context and role matrix", () => {
   test("transfer boundary resolves historical branch, department, and compensation", async () => {
-    expect(await service.context(7, "2026-09-14")).toMatchObject({ branchId: 10, departmentId: 20, baseSalary: "20000.00" });
-    expect(await service.context(7, "2026-09-15")).toMatchObject({ branchId: 11, departmentId: 21, baseSalary: "25000.00" });
+    expect(await service.context(7, "2026-09-14")).toMatchObject({ branchId: 10, branchName:"สาขาทดสอบ", departmentId: 20, baseSalary: "20000.00" });
+    expect(await service.context(7, "2026-09-15")).toMatchObject({ branchId: 11, branchName:"สาขาทดสอบ", departmentId: 21, baseSalary: "25000.00" });
     await expect(service.context(7, "2026-08-31")).rejects.toMatchObject({ code: "PAYROLL_ASSIGNMENT_MISSING" });
   });
   test("employee can read/submit own data but cannot manage or view others", async () => {

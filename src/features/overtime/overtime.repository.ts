@@ -1,5 +1,5 @@
 import { ApplicationError } from "../../core/errors/application.error";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, getTableColumns, gte, lte, sql } from "drizzle-orm";
 import { operationExecutor, operationTransaction } from "../../core/db/operation-context";
 import { overtimeApprovalActions, overtimeRecords } from "./overtime.schema";
 import type { OvertimeRecord, SubmitOvertimeCommand } from "./overtime.dto";
@@ -17,8 +17,9 @@ export type OvertimeSession = {
   transaction: unknown;
   insert(command: SubmitOvertimeCommand, actorId: number): Promise<OvertimeRecord>;
   findForUpdate(id: number): Promise<OvertimeRecord | undefined>;
+  updatePending(id: number, command: SubmitOvertimeCommand): Promise<OvertimeRecord>;
   decide(id: number, decision: "approved" | "rejected"): Promise<OvertimeRecord>;
-  appendAction(id: number, actorId: number, action: "submitted" | "approved" | "rejected", remark?: string): Promise<void>;
+  appendAction(id: number, actorId: number, action: "submitted" | "approved" | "rejected" | "overridden", remark?: string): Promise<void>;
 };
 export type OvertimeRepository = {
   withTransaction<T>(work: (session: OvertimeSession) => Promise<T>): Promise<T>;
@@ -31,7 +32,10 @@ const pgCode = (error: unknown) => {
 };
 export class DrizzleOvertimeRepository implements OvertimeRepository {
  async findById(id:number) { return operationExecutor().query.overtimeRecords.findFirst({where:eq(overtimeRecords.id,id)}); }
- async history(id:number) { return operationExecutor().query.overtimeApprovalActions.findMany({where:eq(overtimeApprovalActions.overtimeRecordId,id),orderBy:[overtimeApprovalActions.actedAt,overtimeApprovalActions.id]}); }
+ async history(id:number) {
+   return operationExecutor().select({...getTableColumns(overtimeApprovalActions),actorUsername:sql<string>`(select username from user_accounts where id = ${overtimeApprovalActions.actorUserAccountId})`})
+     .from(overtimeApprovalActions).where(eq(overtimeApprovalActions.overtimeRecordId,id)).orderBy(overtimeApprovalActions.actedAt,overtimeApprovalActions.id);
+ }
 
   async withTransaction<T>(work: (session: OvertimeSession) => Promise<T>): Promise<T> {
     try {
@@ -49,6 +53,16 @@ export class DrizzleOvertimeRepository implements OvertimeRepository {
         },
         findForUpdate: async (id) => {
           const [row] = await tx.select().from(overtimeRecords).where(eq(overtimeRecords.id, id)).for("update");
+          return row;
+        },
+        updatePending: async (id, command) => {
+          const [row] = await tx.update(overtimeRecords).set({
+            overtimeDate: command.overtimeDate, overtimeType: command.overtimeType,
+            hours: command.hours ?? null, dayUnits: command.dayUnits ?? null,
+            workDayRecordId: command.workDayRecordId ?? null, reason: command.reason ?? null,
+            updatedAt: new Date(),
+          }).where(and(eq(overtimeRecords.id, id), eq(overtimeRecords.status, "pending"))).returning();
+          if (!row) throw new OvertimeError("OVERTIME_NOT_PENDING");
           return row;
         },
         decide: async (id, decision) => {

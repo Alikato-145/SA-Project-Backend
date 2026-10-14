@@ -43,6 +43,7 @@ const harness = () => {
       async findById() { return null; },
       async insert() { throw new ApplicationError("DUPLICATE_CODE"); },
       async update() { return null; },
+      async hasActiveChildren() { return false; },
       async deactivate() { return null; },
     },
   });

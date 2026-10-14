@@ -27,14 +27,17 @@ export const createPayrollHarness = (options: {
   load?: Partial<PayrollInputLoadResult>;
   shopExists?: boolean;
   overlap?: boolean;
+  configurationLocked?:boolean;
+  branchInShop?:boolean;
+  configurationBranchId?:string;
   duplicatePeriod?: boolean;
   originalStatus?: "draft" | "calculated" | "locked";
   originalPeriodEnd?: string;
 } = {}) => {
   let period = options.period ?? periodFixture();
   let adjustmentStatus: PayrollAdjustmentRecord["status"] = "pending";
-  const calls = { replace: 0, settle: 0, audit: [] as string[] };
-  const configuration: PayrollConfigurationRecord = { id: "5", shopId: "1", branchId: null,
+  const calls = { endedConfigurations:[] as {id:string;date:string}[], replace: 0, settle: 0, audit: [] as string[] };
+  const configuration: PayrollConfigurationRecord = { id: "5", shopId: "1", branchId: options.configurationBranchId ?? null,
     configKey: "STANDARD_WORK_DAYS", numericValue: "20.0000", unit: "days", effectiveFrom: "2026-01-01",
     effectiveTo: null, createdByUserAccountId: "1" };
   const adjustment = (): PayrollAdjustmentRecord => ({ id: "60", originalPayrollRecordId: "70", appliedPayrollPeriodId: "20",
@@ -45,6 +48,10 @@ export const createPayrollHarness = (options: {
   const session = {
     executor: { execute: async () => undefined } as unknown as PayrollRepositorySession["executor"],
     findActiveShop: async () => options.shopExists ?? true,
+    findConfigurationForUpdate:async()=>configuration,
+    endConfiguration:async(id:string,date:string)=>{calls.endedConfigurations.push({id,date});},
+    configurationRangeIsLocked:async()=>options.configurationLocked??false,
+    findBranchInShop:async()=>options.branchInShop??true,
     findConfigurationOverlap: async () => options.overlap ?? false,
     insertConfiguration: async () => configuration,
     resolveConfiguration: async () => configuration,
@@ -58,7 +65,8 @@ export const createPayrollHarness = (options: {
     insertAdjustment: async () => adjustment(),
     findAdjustment: async () => adjustment(),
     decideAdjustment: async (_id: string, decision: "approved" | "rejected") => { adjustmentStatus = decision; return adjustment(); },
-    findRecordState: async () => ({ status: options.originalStatus ?? "locked", branchId: "2", periodEnd: options.originalPeriodEnd ?? "2026-08-31" }),
+    findRecordState: async () => ({ status: options.originalStatus ?? "locked", branchId: "2",shopId:"1",employeeId:"3", periodEnd: options.originalPeriodEnd ?? "2026-08-31" }),
+    hasAssignmentForPeriod:async()=>true,
   } as PayrollRepositorySession;
   const repository: PayrollRepository = {
     withTransaction: async (work) => work(session),

@@ -122,6 +122,19 @@ export class UserAccountRepository {
     return account ?? null;
   }
 
+  async findAuthenticationByIdForUpdate(
+    accountId: number,
+  ): Promise<AuthenticationAccountRecord | null> {
+    const [account] = await this.executor
+      .select(authenticationSelection)
+      .from(userAccounts)
+      .where(eq(userAccounts.id, accountId))
+      .limit(1)
+      .for("update");
+
+    return account ?? null;
+  }
+
   async findSafeById(accountId: number): Promise<SafeAccountRecord | null> {
     const [account] = await this.executor
       .select(safeAccountSelection)
@@ -201,6 +214,19 @@ export class UserAccountRepository {
         lastLoginAt: update.lastLoginAt,
         updatedAt: update.lastLoginAt,
       })
+      .where(eq(userAccounts.id, accountId))
+      .returning(authenticationSelection);
+
+    return account ?? null;
+  }
+
+  async updatePassword(
+    accountId: number,
+    passwordHash: string,
+  ): Promise<AuthenticationAccountRecord | null> {
+    const [account] = await this.executor
+      .update(userAccounts)
+      .set({ passwordHash, updatedAt: new Date() })
       .where(eq(userAccounts.id, accountId))
       .returning(authenticationSelection);
 

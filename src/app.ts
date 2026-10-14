@@ -1,3 +1,7 @@
+import { accessLog } from "./core/middleware/access-log";
+import { createHealthRoutes } from "./core/health/health.routes";
+import { createAttachmentRoutes } from "./features/attachment/attachment.routes";
+import { createAttachmentService } from "./features/attachment/attachment.service";
 import { createEmployeeOperationContextService } from "./features/employee/employee.operation-context.service";
 import { createPayrollInputService } from "./features/payroll/payroll.service";
 import { DrizzlePayrollInputRepository } from "./features/payroll/payroll.repository";
@@ -193,8 +197,10 @@ const concreteRoleOptions = (): RoleRoutesOptions => ({
 });
 
 const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
+  const payrollInputs=createPayrollInputService(new DrizzlePayrollInputRepository(),new DrizzlePayrollInputProvider());
   const audit = createAuditService(db, auditRepository);
   const assignmentService = createEmploymentAssignmentService({
+    payroll:payrollInputs,
     repository: employmentAssignmentRepository,
     rootExecutor: db,
     transactionRunner,
@@ -211,6 +217,7 @@ const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
     cipher: createBankAccountCipher(bankKeyringFromEnv(process.env)),
   });
   const weeklyHolidayService = createEmployeeWeeklyHolidayService({
+    payroll:payrollInputs,
     repository: holidayRepository,
     rootExecutor: db,
     transactionRunner,
@@ -220,6 +227,7 @@ const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
   const accountService = createConcreteUserAccountAdminService();
   return {
     service: createEmployeeService({
+      employmentTermination:assignmentService,
       rootExecutor: db,
       transactionRunner,
       actions: audit.actions,
@@ -274,8 +282,13 @@ export const createApp = (
   operationsOptions: ReturnType<typeof concreteOperationsOptions> = concreteOperationsOptions(),
 ) =>
   new Elysia({ name: "haris-payroll" })
+    .use(accessLog())
     .get("/", () => success({ service: "haris-payroll", status: "ok" }))
+    .use(createHealthRoutes())
     .use(createUserAccountRoutes(userAccountOptions))
+    .use(createAttachmentRoutes({ service: createAttachmentService({ rootExecutor: db, transactionRunner,
+      actions: createAuditService(db, auditRepository).actions, domain: createAuditService(db, auditRepository).domain,
+      employees: employeeOptions.service, leave: operationsOptions.leave }), authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
     .use(createOrganizationRoutes(organizationOptions))
     .use(createUserAccountAdminRoutes(userAccountAdminOptions))
     .use(createRoleRoutes(roleOptions))

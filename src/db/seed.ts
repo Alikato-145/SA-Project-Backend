@@ -297,7 +297,7 @@ const seed = async () => {
       username: "supervisor",
       roleCode: "SUPERVISOR",
       employeeId: null,
-      branchId: null,
+      branchId: demoBranchId,
       departmentId: demoDepartmentId,
     });
     await ensureDevelopmentAccount({
@@ -309,7 +309,12 @@ const seed = async () => {
     });
 
     // C4's role smoke needs an effective operational context, not only accounts.
-    const now = new Date();
+    const fixtureDate = process.env.SEED_AS_OF_DATE;
+    if (fixtureDate && (!/^\d{4}-\d{2}-\d{2}$/.test(fixtureDate) ||
+      new Date(`${fixtureDate}T12:00:00Z`).toISOString().slice(0, 10) !== fixtureDate)) {
+      throw new Error("SEED_AS_OF_DATE must be a valid ISO date.");
+    }
+    const now = fixtureDate ? new Date(`${fixtureDate}T12:00:00Z`) : new Date();
     const bangkok = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(now);

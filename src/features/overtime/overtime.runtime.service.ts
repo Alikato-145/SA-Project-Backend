@@ -22,12 +22,13 @@ export const createOvertimeRuntimeService=(runtime:OperationRuntime,schedule:Bra
   if((command.overtimeType==="rest_day"&&!weekly)||(command.overtimeType==="public_holiday"&&!publicHoliday)||(command.overtimeType==="hourly"&&applicable.kind==="none"))throw new ApplicationError("OVERTIME_CONTEXT_INVALID");
   if(command.workDayRecordId) {const rows=await attendance.findForPayrollRange(actor!,{employeeId:command.employeeId,startDate:command.overtimeDate,endDate:command.overtimeDate});if(!rows.some(row=>row.id===command.workDayRecordId))throw new ApplicationError("OVERTIME_CONTEXT_INVALID");}
  }},{assertDateUnlocked:(tx,id,date)=>runtime.payroll.assertInputsMutable(tx as any,{employeeId:id,startDate:date,endDate:date})});
- const approve=service.approveOvertime.bind(service),reject=service.rejectOvertime.bind(service);
+ const approve=service.approveOvertime.bind(service),reject=service.rejectOvertime.bind(service),update=service.updateOvertime.bind(service);
  return Object.assign(service,{
   submitOvertime:(actor:Parameters<OvertimeService["submitOvertime"]>[0],command:Parameters<OvertimeService["submitOvertime"]>[1])=>runOperation(runtime,actor,"overtime","submit","overtime_records",async()=>{
    return {value:await OvertimeService.prototype.submitOvertime.call(service,actor,command)};
   }),
   approveOvertime:(actor:Parameters<typeof approve>[0],id:number,remark?:string)=>runOperation(runtime,actor,"overtime","approve","overtime_records",async()=>{const oldData=await repository.findById(id);return {value:await approve(actor,id,remark),oldData};}),
+  updateOvertime:(actor:Parameters<typeof update>[0],id:number,command:Parameters<typeof update>[2])=>runOperation(runtime,actor,"overtime","update","overtime_records",async()=>{const oldData=await repository.findById(id);return {value:await update(actor,id,command),oldData};}),
   rejectOvertime:(actor:Parameters<typeof reject>[0],id:number,remark?:string)=>runOperation(runtime,actor,"overtime","reject","overtime_records",async()=>{const oldData=await repository.findById(id);return {value:await reject(actor,id,remark),oldData};}),
   async listRequests(actor:Parameters<typeof approve>[0],employeeId:number) {
    const rows=await repository.listByEmployee(employeeId);if(!rows.length)await runtime.context.assertEmployee(actor,employeeId,bangkokToday(),"read");const visible=[];

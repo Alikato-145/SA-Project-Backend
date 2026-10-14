@@ -41,6 +41,11 @@ export interface LogoutDto {
   logged_out: true;
 }
 
+export interface PasswordChangedDto {
+  password_changed: true;
+}
+
 export type LoginResponseDto = SuccessHttpDto<CurrentActorDto>;
 export type CurrentActorResponseDto = SuccessHttpDto<CurrentActorDto>;
 export type LogoutResponseDto = SuccessHttpDto<LogoutDto>;
+export type PasswordChangedResponseDto = SuccessHttpDto<PasswordChangedDto>;

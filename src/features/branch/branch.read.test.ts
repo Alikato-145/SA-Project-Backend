@@ -77,6 +77,7 @@ const setup = (override: Partial<BranchRepositoryPort> = {}) => {
     async update(_executor, id) {
       return id === record.id ? record : null;
     },
+    async hasActiveChildren() { return false; },
     async deactivate(_executor, id) {
       return id === record.id ? { ...record, isActive: false } : null;
     },

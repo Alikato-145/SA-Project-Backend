@@ -14,6 +14,7 @@ export const createEmployeeOperationContextService = (repository: Repository = e
    if (action === "finance") { if (!globals(actor)) throw new ApplicationError("FORBIDDEN_SCOPE"); return "all" as const; }
    if (["read","submit"].includes(action) && authenticated.employeeId === String(employeeId) && authenticated.grants.some(g => parseActiveGrant(g)?.scope === "self")) return "self" as const;
    if(globals(actor))return "all" as const;
+   if (!authenticated.grants.some(g => { const grant=parseActiveGrant(g); return grant?.scope === "branch" || grant?.scope === "department"; })) throw new ApplicationError("FORBIDDEN_SCOPE");
    const row=await service.context(employeeId,date);
    const matches=authenticated.grants.map(parseActiveGrant).filter(grant => grant && ((grant.scope === "all" && ["HR","OWNER"].includes(grant.roleCode)) || (grant.branchId === String(row.branchId) && (grant.scope === "branch" || (grant.scope === "department" && grant.departmentId === String(row.departmentId))))));
    const grant=matches.find(grant=>grant?.scope === "all") ?? matches.find(grant=>grant?.scope === "branch") ?? matches[0];

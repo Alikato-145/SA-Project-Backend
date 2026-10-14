@@ -43,6 +43,10 @@ export const createPayrollRoutes = (options: PayrollRoutesOptions) => {
       body: t.Object({ shop_id: id, branch_id: nullableId, config_key: t.String({ minLength: 1, maxLength: 50 }),
         numeric_value: decimal, unit: t.String({ minLength: 1, maxLength: 30 }), effective_from: isoDate, effective_to: nullableDate }, { additionalProperties: false }),
     })
+    .post("/configurations/:configuration_id/successor",({actor,params,body,requestId})=>controller.supersedeConfiguration({actor,configurationId:params.configuration_id,body,requestId}),{
+      params:t.Object({configuration_id:id},{additionalProperties:false}),
+      body:t.Object({numeric_value:decimal,effective_from:isoDate,effective_to:nullableDate},{additionalProperties:false}),
+    })
     .get("/periods", ({ actor, query, requestId }) => controller.listPeriods({ actor, shopId: query.shop_id, year: query.year, status: query.status, page: query.page, pageSize: query.page_size, requestId }), {
       query: t.Object({ shop_id: id, year: t.Optional(t.Integer({ minimum: 2000, maximum: 2200 })), status: t.Optional(t.Union([t.Literal("draft"), t.Literal("previewed"), t.Literal("locked")])), page, page_size: pageSize }, { additionalProperties: false }),
     })
@@ -53,6 +57,7 @@ export const createPayrollRoutes = (options: PayrollRoutesOptions) => {
     .get("/periods/:period_id", ({ actor, params, requestId }) => controller.period({ actor, periodId: params.period_id, requestId }), {
       params: t.Object({ period_id: id }, { additionalProperties: false }),
     })
+    .get("/periods/:period_id/readiness",({actor,params,requestId})=>controller.readiness({actor,periodId:params.period_id,requestId}),{params:t.Object({period_id:id},{additionalProperties:false})})
     .get("/periods/:period_id/records/:record_id", ({ actor, params, requestId }) => controller.record({ actor, periodId: params.period_id, recordId: params.record_id, requestId }), {
       params: t.Object({ period_id: id, record_id: id }, { additionalProperties: false }),
     })

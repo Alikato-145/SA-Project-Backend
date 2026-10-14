@@ -5,8 +5,8 @@ import { branches } from "../branch/branch.schema";
 import { employeeWeeklyHolidays } from "../employee-weekly-holiday/employee-weekly-holiday.schema";
 export const employeeOperationContextRepository = {
  async datedAssignment(employeeId: number, date: string) {
-  const [row] = await operationExecutor().select({ employeeId: employmentAssignments.employeeId, branchId: employmentAssignments.branchId, departmentId: employmentAssignments.departmentId, baseSalary: employmentAssignments.baseSalary, shopId: branches.shopId })
-   .from(employmentAssignments).innerJoin(branches, eq(branches.id, employmentAssignments.branchId)).where(and(eq(employmentAssignments.employeeId,employeeId), lte(employmentAssignments.effectiveFrom,date), or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,date))));
+  const [row] = await operationExecutor().select({ employeeId: employmentAssignments.employeeId, branchId: employmentAssignments.branchId, branchName: branches.name, departmentId: employmentAssignments.departmentId, baseSalary: employmentAssignments.baseSalary, shopId: branches.shopId })
+   .from(employmentAssignments).innerJoin(branches, eq(branches.id, employmentAssignments.branchId)).where(and(eq(employmentAssignments.employeeId,employeeId),eq(employmentAssignments.isPrimary,true), lte(employmentAssignments.effectiveFrom,date), or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,date))));
   return row as typeof row | undefined;
  },
  async branchShop(branchId: number) { return (await operationExecutor().query.branches.findFirst({ where: eq(branches.id,branchId) }))?.shopId; },

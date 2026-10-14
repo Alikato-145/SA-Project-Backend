@@ -1,17 +1,20 @@
 import type { AuthenticatedActor } from "../../core/auth/auth.types";
 import { ApplicationError } from "../../core/errors/application.error";
 import type { PayrollAdjustmentRequestDto, PayrollConfigurationRequestDto, PayrollPeriodRequestDto } from "./payroll.dto";
-import { toPayrollAdjustmentResponseDto, toPayrollConfigurationResponseDto, toPayrollPeriodResponseDto, toPayrollRecordResponseDto } from "./payroll.mapper";
+import { toPayrollReadinessResponseDto, toPayrollAdjustmentResponseDto, toPayrollConfigurationResponseDto, toPayrollPeriodResponseDto, toPayrollRecordResponseDto } from "./payroll.mapper";
 import { payrollConfigurationUnits, type PayrollAdjustmentRecord, type PayrollAdjustmentStatus, type PayrollConfigurationKey, type PayrollConfigurationRecord, type PayrollPeriodDetail, type PayrollPeriodRecord, type PayrollPeriodStatus, type PayrollPreviewResult, type PayrollRecordDetail } from "./payroll.types";
-import { assertPayrollRange, parsePayrollConfigurationKey, parsePayrollDate, parsePayrollDecimal, parsePayrollId } from "./payroll.validation";
+import type { PayrollReadiness } from "./payroll.readiness.types";
+import { assertPayrollRange, parsePayrollConfigurationKey, parsePayrollDate, parsePayrollDecimal, parsePayrollMoney, parsePayrollId } from "./payroll.validation";
 
 export interface PayrollControllerService {
   getPayrollAccess(actor: AuthenticatedActor): { canMutate: boolean; readableBranchIds: readonly string[] | null };
   createPayrollConfiguration(command: Parameters<typeof parseConfigurationCommand>[0] extends never ? never : ReturnType<typeof parseConfigurationCommand>): Promise<PayrollConfigurationRecord>;
+  supersedePayrollConfiguration(command:{actor:AuthenticatedActor;requestId:string;configurationId:string;numericValue:string;effectiveFrom:string;effectiveTo:string|null}):Promise<PayrollConfigurationRecord>;
   listPayrollConfigurations(actor: AuthenticatedActor, shopId: string, filters?: { branchId?: string; configKey?: PayrollConfigurationKey; onDate?: string; page?: number; pageSize?: number }, requestId?: string): Promise<PayrollConfigurationRecord[]>;
   createPayrollPeriod(command: ReturnType<typeof parsePeriodCommand>): Promise<PayrollPeriodRecord>;
   listPayrollPeriods(actor: AuthenticatedActor, shopId: string, filters?: { year?: number; status?: PayrollPeriodStatus; page?: number; pageSize?: number }, requestId?: string): Promise<PayrollPeriodRecord[]>;
   getPayrollPeriod(actor: AuthenticatedActor, periodId: string, requestId?: string): Promise<PayrollPeriodDetail>;
+  getPayrollReadiness(actor:AuthenticatedActor,periodId:string,requestId?:string):Promise<PayrollReadiness>;
   getPayrollRecord(actor: AuthenticatedActor, periodId: string, recordId: string, requestId?: string): Promise<PayrollRecordDetail>;
   previewPayrollPeriod(actor: AuthenticatedActor, periodId: string, requestId: string): Promise<PayrollPreviewResult>;
   lockPayrollPeriod(actor: AuthenticatedActor, periodId: string, requestId: string): Promise<PayrollPreviewResult>;
@@ -48,7 +51,7 @@ const parseAdjustmentCommand = (input: { actor: AuthenticatedActor; requestId: s
   actor: input.actor, requestId: input.requestId,
   originalRecordId: parsePayrollId(input.body.original_payroll_record_id, "original_payroll_record_id"),
   targetPeriodId: parsePayrollId(input.body.applied_payroll_period_id, "applied_payroll_period_id"),
-  direction: input.body.direction, amount: parsePayrollDecimal(input.body.amount, "amount", true), reason: input.body.reason.trim(),
+  direction: input.body.direction, amount: parsePayrollMoney(input.body.amount, "amount", true), reason: input.body.reason.trim(),
 });
 
 export const createPayrollController = (service: PayrollControllerService) => ({
@@ -58,6 +61,9 @@ export const createPayrollController = (service: PayrollControllerService) => ({
   },
   async createConfiguration(input: { actor: AuthenticatedActor; requestId: string; body: PayrollConfigurationRequestDto }) {
     return { data: toPayrollConfigurationResponseDto(await service.createPayrollConfiguration(parseConfigurationCommand(input))), request_id: input.requestId };
+  },
+  async supersedeConfiguration(input:{actor:AuthenticatedActor;requestId:string;configurationId:string;body:{numeric_value:string;effective_from:string;effective_to?:string|null}}) {
+    return {data:toPayrollConfigurationResponseDto(await service.supersedePayrollConfiguration({actor:input.actor,requestId:input.requestId,configurationId:parsePayrollId(input.configurationId,"configuration_id"),numericValue:parsePayrollDecimal(input.body.numeric_value,"numeric_value"),effectiveFrom:parsePayrollDate(input.body.effective_from,"effective_from"),effectiveTo:input.body.effective_to==null?null:parsePayrollDate(input.body.effective_to,"effective_to")})),request_id:input.requestId};
   },
   async listConfigurations(input: { actor: AuthenticatedActor; requestId: string; shopId: string; branchId?: string; configKey?: string; onDate?: string; page?: number; pageSize?: number }) {
     if (input.configKey && !(input.configKey in payrollConfigurationUnits)) throw new ApplicationError("VALIDATION_ERROR");
@@ -78,7 +84,10 @@ export const createPayrollController = (service: PayrollControllerService) => ({
   },
   async period(input: { actor: AuthenticatedActor; requestId: string; periodId: string }) {
     const detail = await service.getPayrollPeriod(input.actor, parsePayrollId(input.periodId, "period_id"), input.requestId);
-    return { data: { period: toPayrollPeriodResponseDto(detail.period), records: detail.records.map(toPayrollRecordResponseDto), blockers: detail.blockers }, request_id: input.requestId };
+    return { data: { period: toPayrollPeriodResponseDto(detail.period), records: detail.records.map(toPayrollRecordResponseDto), blockers: detail.blockers, roster: detail.roster ?? [] }, request_id: input.requestId };
+  },
+  async readiness(input:{actor:AuthenticatedActor;requestId:string;periodId:string}) {
+    return {data:toPayrollReadinessResponseDto(await service.getPayrollReadiness(input.actor,parsePayrollId(input.periodId,"period_id"),input.requestId)),request_id:input.requestId};
   },
   async record(input: { actor: AuthenticatedActor; requestId: string; periodId: string; recordId: string }) {
     const record = await service.getPayrollRecord(input.actor, parsePayrollId(input.periodId, "period_id"), parsePayrollId(input.recordId, "record_id"), input.requestId);
