@@ -196,7 +196,8 @@ export interface CreatePayrollPeriodCommand {
 
 export interface PayrollAdjustmentRecord {
   id: string;
-  originalPayrollRecordId: string;
+  employeeId: string;
+  originalPayrollRecordId: string | null;
   appliedPayrollPeriodId: string | null;
   direction: PayrollDirection;
   amount: string;

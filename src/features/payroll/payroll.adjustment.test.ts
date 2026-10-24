@@ -29,3 +29,37 @@ describe("payroll adjustments", () => {
       .rejects.toMatchObject({ code: "PAYROLL_ADJUSTMENT_STATE_CONFLICT" });
   });
 });
+
+
+describe("current-period adjustments", () => {
+  const current = { actor: payrollActor(), requestId: "current", employeeId: "3", targetPeriodId: "20", direction: "earning" as const, amount: "100.00", reason: "Bonus" };
+  test("requests without a locked original", async () => {
+    const result = await createPayrollService(createPayrollHarness()).requestPayrollAdjustment(current);
+    expect(result.employeeId).toBe("3");
+    expect(result.originalPayrollRecordId).toBeNull();
+  });
+  test("rejects mismatched original employee", async () => {
+    await expect(createPayrollService(createPayrollHarness()).requestPayrollAdjustment({ ...command, employeeId: "999" }))
+      .rejects.toMatchObject({ code: "PAYROLL_ADJUSTMENT_INVALID" });
+  });
+  test("requires employee and matching shop assignment", async () => {
+    await expect(createPayrollService(createPayrollHarness()).requestPayrollAdjustment({ ...current, employeeId: undefined }))
+      .rejects.toMatchObject({ code: "PAYROLL_ADJUSTMENT_INVALID" });
+    await expect(createPayrollService(createPayrollHarness({ hasAssignment: false })).requestPayrollAdjustment(current))
+      .rejects.toMatchObject({ code: "PAYROLL_ASSIGNMENT_MISSING" });
+  });
+  for (const roleCode of ["EMPLOYEE", "SUPERVISOR", "BRANCH_MANAGER"] as const) {
+    test(`rejects ${roleCode} request and approval`, async () => {
+      const actor = { ...payrollActor(), grants: [{ grantId: "1", roleCode, scope: "all" as const, branchId: null, departmentId: null }] };
+      const service = createPayrollService(createPayrollHarness());
+      await expect(service.requestPayrollAdjustment({ ...current, actor })).rejects.toMatchObject({ code: "FORBIDDEN_SCOPE" });
+      await expect(service.decidePayrollAdjustment(actor, "60", "approved", "denied")).rejects.toMatchObject({ code: "FORBIDDEN_SCOPE" });
+    });
+  }
+  test("approves current item without looking up a historical record", async () => {
+    const harness = createPayrollHarness();
+    const service = createPayrollService(harness);
+    await service.requestPayrollAdjustment(current);
+    expect((await service.decidePayrollAdjustment(payrollActor(), "60", "approved", "approve-current")).status).toBe("approved");
+  });
+});

@@ -15,6 +15,13 @@
       "when": 1792867490833,
       "tag": "0001_auth_session_revocation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792874910489,
+      "tag": "0002_motionless_piledriver",
+      "breakpoints": true
     }
   ]
 }

@@ -255,20 +255,22 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
     } catch (error) { return mappedError(error); }
   },
 
-  async requestPayrollAdjustment(command: { actor: PayrollActor; requestId: string; originalRecordId: string; targetPeriodId: string;
+  async requestPayrollAdjustment(command: { actor: PayrollActor; requestId: string; employeeId?: string; originalRecordId?: string; targetPeriodId: string;
     direction: "earning" | "deduction"; amount: string; reason: string }): Promise<PayrollAdjustmentRecord> {
     assertPayrollMutationAccess(command.actor);
     parsePayrollMoney(command.amount, "amount", true);
     if (!command.reason.trim() || command.reason.length > 1000) throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
     return dependencies.repository.withTransaction(async (session) => {
       await serializePayrollInputs(session.executor);
-      const original = await session.findRecordState(command.originalRecordId);
-      if (!original || original.status !== "locked") throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
+      const original = command.originalRecordId ? await session.findRecordState(command.originalRecordId) : null;
+      if (command.originalRecordId && (!original || original.status !== "locked")) throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
+      const employeeId = command.employeeId ?? original?.employeeId;
+      if (!employeeId || (original && original.employeeId !== employeeId)) throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
       const target = await requirePeriod(session, command.targetPeriodId, true);
-      if (target.status === "locked" || target.startDate <= original.periodEnd) throw new ApplicationError("PAYROLL_ADJUSTMENT_STATE_CONFLICT");
-      if(target.shopId!==original.shopId)throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID",{publicMessage:"งวดปลายทางต้องเป็นร้านเดียวกับรายการต้นทาง"});
-      if(!await session.hasAssignmentForPeriod(original.employeeId,target))throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING",{publicMessage:"ไม่มีประวัติการจ้างของพนักงานในงวดปลายทาง จึงยังนำส่วนต่างไปคำนวณไม่ได้"});
-      const created = await session.insertAdjustment({ originalRecordId: command.originalRecordId,
+      if (target.status === "locked" || (original && target.startDate <= original.periodEnd)) throw new ApplicationError("PAYROLL_ADJUSTMENT_STATE_CONFLICT");
+      if(original && target.shopId!==original.shopId)throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID",{publicMessage:"งวดปลายทางต้องเป็นร้านเดียวกับรายการต้นทาง"});
+      if(!await session.hasAssignmentForPeriod(employeeId,target))throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING",{publicMessage:"ไม่มีประวัติการจ้างของพนักงานในงวดปลายทาง จึงยังนำส่วนต่างไปคำนวณไม่ได้"});
+      const created = await session.insertAdjustment({ employeeId, originalRecordId: command.originalRecordId ?? null,
         targetPeriodId: command.targetPeriodId, direction: command.direction, amount: command.amount,
         reason: command.reason.trim(), actorId: command.actor.accountId });
       await dependencies.audit.record(session.executor, { actorId: command.actor.accountId, requestId: command.requestId,
@@ -287,8 +289,8 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
         if(!current.appliedPayrollPeriodId)throw new ApplicationError("PAYROLL_ADJUSTMENT_INVALID");
         const target=await requirePeriod(session,current.appliedPayrollPeriodId,true);
         if(target.status==="locked")throw new ApplicationError("PAYROLL_PERIOD_LOCKED");
-        const original=await session.findRecordState(current.originalPayrollRecordId);
-        if(decision==="approved" && (!original || target.shopId!==original.shopId || !await session.hasAssignmentForPeriod(original.employeeId,target)))throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING");
+        const original=current.originalPayrollRecordId ? await session.findRecordState(current.originalPayrollRecordId) : null;
+        if(decision==="approved" && ((current.originalPayrollRecordId !== null && (!original || original.employeeId !== current.employeeId || target.shopId!==original.shopId)) || !await session.hasAssignmentForPeriod(current.employeeId,target)))throw new ApplicationError("PAYROLL_ASSIGNMENT_MISSING");
         const decided = await session.decideAdjustment(adjustmentId, decision, actor.accountId);
         await dependencies.audit.record(session.executor, { actorId: actor.accountId, requestId,
           action: `payroll.adjustment.${decision}`, tableName: "payroll_adjustments", recordId: decided.id, reason: decided.reason });

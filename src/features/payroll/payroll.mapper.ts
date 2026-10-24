@@ -47,7 +47,7 @@ const recordHasIdentity = (record: PayrollCalculatedRecord | PayrollRecordDetail
   "id" in record;
 
 export const toPayrollAdjustmentResponseDto = (record: PayrollAdjustmentRecord): PayrollAdjustmentResponseDto => ({
-  id: record.id, original_payroll_record_id: record.originalPayrollRecordId,
+  id: record.id, employee_id: record.employeeId, original_payroll_record_id: record.originalPayrollRecordId,
   applied_payroll_period_id: record.appliedPayrollPeriodId, direction: record.direction,
   amount: record.amount, reason: record.reason, status: record.status,
   requested_by_user_account_id: record.requestedByUserAccountId, requested_at: record.requestedAt.toISOString(),

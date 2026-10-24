@@ -9,7 +9,7 @@ const actor: AuthenticatedActor = payrollActor();
 const period = periodFixture();
 const configuration = { id: "5", shopId: "1", branchId: null, configKey: "STANDARD_WORK_DAYS" as const,
   numericValue: "20.0000", unit: "days", effectiveFrom: "2026-01-01", effectiveTo: null, createdByUserAccountId: "1" };
-const adjustment = { id: "60", originalPayrollRecordId: "70", appliedPayrollPeriodId: "20", direction: "earning" as const,
+const adjustment = { id: "60", employeeId: "3", originalPayrollRecordId: "70", appliedPayrollPeriodId: "20", direction: "earning" as const,
   amount: "100.00", reason: "Correction", status: "pending" as const, requestedByUserAccountId: "1",
   requestedAt: new Date("2026-09-30T00:00:00Z"), approvedByUserAccountId: null, approvedAt: null, appliedPayrollItemId: null };
 

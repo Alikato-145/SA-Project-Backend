@@ -78,7 +78,7 @@ export interface PayrollRepositorySession {
   setLocked(id: string, actorId: string): Promise<PayrollPeriodRecord>;
   replaceCalculatedRecords(periodId: string, records: readonly PayrollCalculatedRecord[], actorId: string, locked: boolean): Promise<void>;
   settleFinanceSources(periodId: string): Promise<void>;
-  insertAdjustment(command: { originalRecordId: string; targetPeriodId: string; direction: "earning" | "deduction"; amount: string; reason: string; actorId: string }): Promise<PayrollAdjustmentRecord>;
+  insertAdjustment(command: { employeeId: string; originalRecordId: string | null; targetPeriodId: string; direction: "earning" | "deduction"; amount: string; reason: string; actorId: string }): Promise<PayrollAdjustmentRecord>;
   findAdjustment(id: string): Promise<PayrollAdjustmentRecord | null>;
   decideAdjustment(id: string, decision: "approved" | "rejected", actorId: string): Promise<PayrollAdjustmentRecord>;
   findRecordState(id: string): Promise<{ status: "draft" | "calculated" | "locked"; branchId: string; shopId: string; employeeId: string; periodEnd: string } | null>;
@@ -232,7 +232,7 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
   },
   async insertAdjustment(command) {
     const [row] = await executor.insert(payrollAdjustments).values({
-      originalPayrollRecordId: numericId(command.originalRecordId), appliedPayrollPeriodId: numericId(command.targetPeriodId),
+      employeeId: numericId(command.employeeId), originalPayrollRecordId: command.originalRecordId === null ? null : numericId(command.originalRecordId), appliedPayrollPeriodId: numericId(command.targetPeriodId),
       direction: command.direction, amount: command.amount, reason: command.reason,
       requestedByUserAccountId: numericId(command.actorId),
     }).returning();
@@ -263,7 +263,7 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
 });
 
 const toAdjustment = (row: typeof payrollAdjustments.$inferSelect): PayrollAdjustmentRecord => ({
-  id: id(row.id), originalPayrollRecordId: id(row.originalPayrollRecordId),
+  id: id(row.id), employeeId: id(row.employeeId), originalPayrollRecordId: row.originalPayrollRecordId === null ? null : id(row.originalPayrollRecordId),
   appliedPayrollPeriodId: row.appliedPayrollPeriodId === null ? null : id(row.appliedPayrollPeriodId),
   direction: row.direction, amount: row.amount, reason: row.reason, status: row.status,
   requestedByUserAccountId: id(row.requestedByUserAccountId), requestedAt: row.requestedAt,
@@ -289,7 +289,7 @@ export class DrizzlePayrollRepository implements PayrollRepository {
       db.select({employeeId:leaveRequests.employeeId,startDate:leaveRequests.startDate,endDate:leaveRequests.endDate}).from(leaveRequests).where(and(inArray(leaveRequests.employeeId,ids),eq(leaveRequests.status,"pending"),lte(leaveRequests.startDate,period.endDate),gte(leaveRequests.endDate,period.startDate))),
       db.select({employeeId:overtimeRecords.employeeId,date:overtimeRecords.overtimeDate,status:overtimeRecords.status,type:overtimeRecords.overtimeType}).from(overtimeRecords).where(and(inArray(overtimeRecords.employeeId,ids),gte(overtimeRecords.overtimeDate,period.startDate),lte(overtimeRecords.overtimeDate,period.endDate))),
       db.select({employeeId:advanceRequests.employeeId,date:advanceRequests.requestMonth}).from(advanceRequests).where(and(inArray(advanceRequests.employeeId,ids),eq(advanceRequests.status,"pending"),eq(advanceRequests.requestMonth,period.startDate))),
-      db.select({employeeId:payrollRecords.employeeId}).from(payrollAdjustments).innerJoin(payrollRecords,eq(payrollRecords.id,payrollAdjustments.originalPayrollRecordId)).innerJoin(employmentAssignments,eq(employmentAssignments.id,payrollRecords.employmentAssignmentId)).where(and(eq(payrollAdjustments.appliedPayrollPeriodId,numericId(period.id)),eq(payrollAdjustments.status,"pending"),branchIds===null?undefined:inArray(employmentAssignments.branchId,branchIds.map(numericId)))),
+      db.select({employeeId:payrollAdjustments.employeeId}).from(payrollAdjustments).where(and(eq(payrollAdjustments.appliedPayrollPeriodId,numericId(period.id)),eq(payrollAdjustments.status,"pending"),inArray(payrollAdjustments.employeeId,ids))),
     ]);
     return {branches:branchRows.map(row=>({...row,id:id(row.id)})),departmentBranchIds:departmentRows.map(row=>id(row.branchId)),positionCount:positionRows.length,roster,configurations:configurations.filter(row=>row.branchId===null||branchKeys.includes(numericId(row.branchId))),
       schedules:schedules.map(row=>({branchId:id(row.branchId),effectiveFrom:row.effectiveFrom,effectiveTo:row.effectiveTo})),attendance:attendance.map(row=>({...row,employeeId:id(row.employeeId)})),weeklyHolidays:weeklyHolidays.map(row=>({employeeId:id(row.employeeId),weekday:row.weekday,effectiveFrom:row.effectiveFrom,effectiveTo:row.effectiveTo})),holidays:holidays.map(row=>row.date),overrides:overrides.map(row=>({...row,branchId:id(row.branchId)})),bankEmployeeIds:bankRows.map(row=>id(row.employeeId)),approvedOvertime:ot.filter(row=>row.status==="approved").map(row=>({employeeId:id(row.employeeId),date:row.date,type:row.type})),
@@ -629,9 +629,9 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       ));
       const debts = options.lockSources ? await debtsQuery.for("update") : await debtsQuery;
       const adjustmentsQuery = executor.select({ adjustment: payrollAdjustments }).from(payrollAdjustments)
-        .innerJoin(payrollRecords, eq(payrollAdjustments.originalPayrollRecordId, payrollRecords.id)).where(and(
+        .where(and(
           eq(payrollAdjustments.appliedPayrollPeriodId, numericId(period.id)), eq(payrollAdjustments.status, "approved"),
-          eq(payrollRecords.employeeId, assignment.employeeId),
+          eq(payrollAdjustments.employeeId, assignment.employeeId),
         ));
       const adjustments = options.lockSources ? await adjustmentsQuery.for("update", { of: payrollAdjustments }) : await adjustmentsQuery;
       inputs.push({

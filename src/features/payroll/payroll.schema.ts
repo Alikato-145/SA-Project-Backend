@@ -255,7 +255,8 @@ export const payrollAdjustments = pgTable(
   "payroll_adjustments",
   {
     id: id(),
-    originalPayrollRecordId: foreignId("original_payroll_record_id").notNull(),
+    employeeId: foreignId("employee_id").notNull(),
+    originalPayrollRecordId: foreignId("original_payroll_record_id"),
     appliedPayrollPeriodId: foreignId("applied_payroll_period_id"),
     direction: payrollItemDirectionEnum("direction").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
@@ -272,6 +273,7 @@ export const payrollAdjustments = pgTable(
       .references(() => payrollItems.id, setNull),
   },
   (table) => [
+    foreignKey({ name: "payroll_adj_employee_fk", columns: [table.employeeId], foreignColumns: [employees.id] }).onDelete("restrict").onUpdate("cascade"),
     foreignKey({
       name: "payroll_adj_original_record_fk",
       columns: [table.originalPayrollRecordId],
@@ -304,6 +306,8 @@ export const payrollAdjustments = pgTable(
       table.originalPayrollRecordId,
       table.status,
     ),
+    index("payroll_adjustments_target_employee_status_idx").on(table.appliedPayrollPeriodId, table.employeeId, table.status),
+    check("chk_adjustment_origin_or_target", sql`${table.originalPayrollRecordId} IS NOT NULL OR ${table.appliedPayrollPeriodId} IS NOT NULL`),
     check("chk_adjustment_amount_positive", sql`${table.amount} > 0`),
   ],
 );

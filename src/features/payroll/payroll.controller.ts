@@ -49,7 +49,8 @@ const parsePeriodCommand = (input: { actor: AuthenticatedActor; requestId: strin
 
 const parseAdjustmentCommand = (input: { actor: AuthenticatedActor; requestId: string; body: PayrollAdjustmentRequestDto }) => ({
   actor: input.actor, requestId: input.requestId,
-  originalRecordId: parsePayrollId(input.body.original_payroll_record_id, "original_payroll_record_id"),
+  employeeId: input.body.employee_id === undefined ? undefined : parsePayrollId(input.body.employee_id, "employee_id"),
+  originalRecordId: input.body.original_payroll_record_id === undefined ? undefined : parsePayrollId(input.body.original_payroll_record_id, "original_payroll_record_id"),
   targetPeriodId: parsePayrollId(input.body.applied_payroll_period_id, "applied_payroll_period_id"),
   direction: input.body.direction, amount: parsePayrollMoney(input.body.amount, "amount", true), reason: input.body.reason.trim(),
 });

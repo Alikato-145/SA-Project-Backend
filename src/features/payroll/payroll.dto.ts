@@ -19,7 +19,8 @@ export interface PayrollPeriodRequestDto {
 }
 
 export interface PayrollAdjustmentRequestDto {
-  original_payroll_record_id: string;
+  employee_id?: string;
+  original_payroll_record_id?: string;
   applied_payroll_period_id: string;
   direction: PayrollDirection;
   amount: string;
@@ -80,7 +81,8 @@ export interface PayrollRecordResponseDto {
 
 export interface PayrollAdjustmentResponseDto {
   id: string;
-  original_payroll_record_id: string;
+  employee_id: string;
+  original_payroll_record_id: string | null;
   applied_payroll_period_id: string | null;
   direction: PayrollDirection;
   amount: string;

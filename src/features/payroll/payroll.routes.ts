@@ -71,7 +71,7 @@ export const createPayrollRoutes = (options: PayrollRoutesOptions) => {
       query: t.Object({ record_id: t.Optional(id), period_id: t.Optional(id), status: t.Optional(t.Union([t.Literal("pending"), t.Literal("approved"), t.Literal("rejected"), t.Literal("applied")])), page, page_size: pageSize }, { additionalProperties: false }),
     })
     .post("/adjustments", ({ actor, body, requestId }) => controller.requestAdjustment({ actor, body, requestId }), {
-      body: t.Object({ original_payroll_record_id: id, applied_payroll_period_id: id,
+      body: t.Object({ employee_id: t.Optional(id), original_payroll_record_id: t.Optional(id), applied_payroll_period_id: id,
         direction: t.Union([t.Literal("earning"), t.Literal("deduction")]), amount: decimal,
         reason: t.String({ minLength: 1, maxLength: 1000 }) }, { additionalProperties: false }),
     })

@@ -33,6 +33,7 @@ export const createPayrollHarness = (options: {
   duplicatePeriod?: boolean;
   originalStatus?: "draft" | "calculated" | "locked";
   originalPeriodEnd?: string;
+  hasAssignment?: boolean;
 } = {}) => {
   let period = options.period ?? periodFixture();
   let adjustmentStatus: PayrollAdjustmentRecord["status"] = "pending";
@@ -40,7 +41,9 @@ export const createPayrollHarness = (options: {
   const configuration: PayrollConfigurationRecord = { id: "5", shopId: "1", branchId: options.configurationBranchId ?? null,
     configKey: "STANDARD_WORK_DAYS", numericValue: "20.0000", unit: "days", effectiveFrom: "2026-01-01",
     effectiveTo: null, createdByUserAccountId: "1" };
-  const adjustment = (): PayrollAdjustmentRecord => ({ id: "60", originalPayrollRecordId: "70", appliedPayrollPeriodId: "20",
+  let adjustmentEmployeeId = "3";
+  let adjustmentOriginalId: string | null = "70";
+  const adjustment = (): PayrollAdjustmentRecord => ({ id: "60", employeeId: adjustmentEmployeeId, originalPayrollRecordId: adjustmentOriginalId, appliedPayrollPeriodId: "20",
     direction: "earning", amount: "100.00", reason: "Correction", status: adjustmentStatus,
     requestedByUserAccountId: "1", requestedAt: new Date("2026-09-30T00:00:00Z"),
     approvedByUserAccountId: adjustmentStatus === "pending" ? null : "1", approvedAt: adjustmentStatus === "pending" ? null : new Date(),
@@ -62,11 +65,11 @@ export const createPayrollHarness = (options: {
     setLocked: async (_id: string, actorId: string) => (period = { ...period, status: "locked", lockedByUserAccountId: actorId, lockedAt: new Date() }),
     replaceCalculatedRecords: async () => { calls.replace += 1; },
     settleFinanceSources: async () => { calls.settle += 1; },
-    insertAdjustment: async () => adjustment(),
+    insertAdjustment: async (command) => { adjustmentEmployeeId = command.employeeId; adjustmentOriginalId = command.originalRecordId; return adjustment(); },
     findAdjustment: async () => adjustment(),
     decideAdjustment: async (_id: string, decision: "approved" | "rejected") => { adjustmentStatus = decision; return adjustment(); },
     findRecordState: async () => ({ status: options.originalStatus ?? "locked", branchId: "2",shopId:"1",employeeId:"3", periodEnd: options.originalPeriodEnd ?? "2026-08-31" }),
-    hasAssignmentForPeriod:async()=>true,
+    hasAssignmentForPeriod:async()=>options.hasAssignment ?? true,
   } as PayrollRepositorySession;
   const repository: PayrollRepository = {
     withTransaction: async (work) => work(session),
