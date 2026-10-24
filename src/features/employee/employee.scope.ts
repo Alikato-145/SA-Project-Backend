@@ -48,3 +48,10 @@ export const canAdministerEmployees = (actor: AuthenticatedActor): boolean =>
     return grant !== null && grant.scope === "all" &&
       (grant.roleCode === "OWNER" || grant.roleCode === "HR");
   });
+
+/** Mutation scope never includes supervisors or historical assignments. */
+export const canManageEmployeeBranch = (actor: AuthenticatedActor, branchId: string | null): boolean =>
+  canAdministerEmployees(actor) || (branchId !== null && actor.grants.some(candidate => {
+    const grant = parseActiveGrant(candidate);
+    return grant?.roleCode === "BRANCH_MANAGER" && grant.scope === "branch" && grant.branchId === branchId;
+  }));

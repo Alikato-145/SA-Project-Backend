@@ -232,6 +232,7 @@ const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
   const accountService = createConcreteUserAccountAdminService();
   return {
     service: createEmployeeService({
+      payroll:payrollInputs,
       employmentTermination:assignmentService,
       rootExecutor: db,
       transactionRunner,

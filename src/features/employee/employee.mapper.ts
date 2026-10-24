@@ -28,7 +28,7 @@ export const toEmployeeHrDto = (record: EmployeeReadRecord): EmployeeHrDto => ({
   passport_id_masked: mask(record.passportId),
 });
 export const toEmployeeResponseDto = ({ record, view }: VisibleEmployee): EmployeeResponseDto =>
-  view === "hr" ? toEmployeeHrDto(record) : view === "own" ? toEmployeeOwnDto(record) : toEmployeeTeamDto(record);
+  view === "hr" ? toEmployeeHrDto(record) : (view === "own" || view === "manager") ? toEmployeeOwnDto(record) : toEmployeeTeamDto(record);
 
 export const toEmployeeOnboardingResponseDto = (result: {
   employee: VisibleEmployee;

@@ -6,6 +6,7 @@ import type { DatabaseExecutor, TransactionRunner } from "../../core/db/transact
 import type { AuditEvent, AuditReceipt } from "../audit/audit.repository";
 import type { EmployeeWriteInput, EmployeeWriteRepositoryPort } from "./employee.repository";
 import { toEmployeeOnboardingResponseDto } from "./employee.mapper";
+import { employeeTestActor } from "./employee.test-support";
 import { createEmployeeService } from "./employee.service";
 
 type FailureStage = "assignment" | "bank" | "holiday" | "account" | "audit";
@@ -140,7 +141,7 @@ const setup = (failure?: FailureStage) => {
     if (failure === stage) throw new Error(stage + " failed");
   };
   const actions = new ActionObserver(root as unknown as DatabaseExecutor, writer, { error() {} });
-  const service = createEmployeeService({
+  const service = createEmployeeService({ payroll: { async serialize() {} },
     rootExecutor: root as unknown as DatabaseExecutor,
     repository,
     writeRepository: repository,
@@ -238,3 +239,25 @@ describe("A3 employee onboarding", () => {
     });
   }
 });
+
+for (const role of ["BRANCH_MANAGER", "SUPERVISOR", "EMPLOYEE"] as const) {
+  test(`scoped onboarding ${role} authorizes before inserting`, async () => {
+    const { root, service } = setup();
+    const input = { ...command, actor: employeeTestActor(role), account: undefined, bankAccount: undefined };
+    if (role === "BRANCH_MANAGER") {
+      const result = await service.onboardEmployee(input);
+      expect(result.employee.view).toBe("manager");
+      expect(root.employees).toHaveLength(1);
+    } else {
+      await expect(service.onboardEmployee(input)).rejects.toMatchObject({ code: "FORBIDDEN_SCOPE" });
+      expect(root.employees).toHaveLength(0);
+    }
+  });
+}
+for (const field of ["branch", "account", "bank"] as const) {
+ test(`manager rejects forbidden ${field} onboarding without writes`, async () => {
+  const {root,service}=setup();
+  await expect(service.onboardEmployee({...command,actor:employeeTestActor("BRANCH_MANAGER"),account:field==="account"?command.account:undefined,bankAccount:field==="bank"?command.bankAccount:undefined,assignment:{...command.assignment,branchId:field==="branch"?"99":"10"}})).rejects.toMatchObject({code:"FORBIDDEN_SCOPE"});
+  expect(root.employees).toHaveLength(0); expect(root.accounts).toHaveLength(0); expect(root.assignments).toHaveLength(0);
+ });
+}

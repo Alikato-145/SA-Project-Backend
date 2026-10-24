@@ -5,6 +5,7 @@ import type { AuthenticatedActor } from "../../core/auth/auth.types";
 import type { DatabaseExecutor, TransactionRunner } from "../../core/db/transaction";
 import type { AuditEvent, AuditReceipt } from "../audit/audit.repository";
 import type { EmployeeWriteInput, EmployeeWriteRepositoryPort } from "./employee.repository";
+import { employeeTestActor } from "./employee.test-support";
 import { createEmployeeService } from "./employee.service";
 
 const actor = (roleCode: "OWNER" | "HR" | "SUPERVISOR"): AuthenticatedActor => ({
@@ -14,14 +15,15 @@ const actor = (roleCode: "OWNER" | "HR" | "SUPERVISOR"): AuthenticatedActor => (
 
 type Row = EmployeeWriteInput & { id: string; status: "active" | "inactive" | "suspended" | "terminated"; terminatedAt: string | null };
 type MemoryExecutor = { rows: Row[] };
-const record = (row: Row) => ({ ...row, currentAssignment: null });
+const record = (row: Row) => ({ ...row, currentAssignment: { branchId: "10", departmentId: "100", positionId: "1" } });
 
-const setup = (options: { failSuccessAudit?: boolean } = {}) => {
+const setup = (options: { failSuccessAudit?: boolean; beforeScope?: () => void } = {}) => {
   const root: MemoryExecutor = { rows: [] };
   const events: AuditEvent[] = [];
+  let currentBranch = "10";
   const repository: EmployeeWriteRepositoryPort = {
     async list() { return { items: [], page: 1, pageSize: 20, total: 0 }; },
-    async findById(executor, id) { const row = (executor as unknown as MemoryExecutor).rows.find((item) => item.id === id); return row ? record(row) : null; },
+    async findById(executor, id) { const row = (executor as unknown as MemoryExecutor).rows.find((item) => item.id === id); return row ? { ...record(row), currentAssignment: { branchId: currentBranch, departmentId: "100", positionId: "1" } } : null; },
     async findIdentityConflict(executor, input, excludeId) {
       const row = (executor as unknown as MemoryExecutor).rows.find((item) => item.id !== excludeId && (item.employeeCode === input.employeeCode || (!!input.nationalId && item.nationalId === input.nationalId) || (!!input.passportId && item.passportId === input.passportId)));
       return row ? { id: row.id } : null;
@@ -46,7 +48,7 @@ const setup = (options: { failSuccessAudit?: boolean } = {}) => {
     },
   };
   const actions = new ActionObserver(root as unknown as DatabaseExecutor, writer, { error() {} });
-  const service = createEmployeeService({ employmentTermination:{async endAssignmentsForTermination(){}}, rootExecutor: root as unknown as DatabaseExecutor, repository, writeRepository: repository, transactionRunner, actions, domain: new DomainAuditObserver(writer), today: () => "2026-09-27" });
+  const service = createEmployeeService({ payroll: { async serialize() { options.beforeScope?.(); currentBranch = options.beforeScope ? "99" : "10"; } }, employmentTermination:{async endAssignmentsForTermination(){}}, rootExecutor: root as unknown as DatabaseExecutor, repository, writeRepository: repository, transactionRunner, actions, domain: new DomainAuditObserver(writer), today: () => "2026-09-27" });
   return { service, root, events };
 };
 
@@ -93,4 +95,36 @@ describe("A3 employee writes", () => {
     await expect(service.createEmployee({ actor: actor("HR"), requestId: "rollback", ...valid })).rejects.toThrow("audit down");
     expect(root.rows).toHaveLength(0);
   });
+});
+
+test("manager edits and terminates current branch with redacted response and audit", async()=>{
+ const {service,root,events}=setup(); await service.createEmployee({actor:actor("HR"),requestId:"create",...valid});
+ const manager=employeeTestActor("BRANCH_MANAGER");
+ const updated=await service.updateEmployee({actor:manager,requestId:"update",employeeId:"1",phone:"0812345678"});
+ expect(updated.record.phone).toBe("0812345678"); expect(updated.view).toBe("manager");
+ const ended=await service.changeEmployeeStatus({actor:manager,requestId:"end",employeeId:"1",status:"terminated",terminatedAt:"2026-09-27",reason:"left"});
+ expect(ended.record.status).toBe("terminated"); expect(root.rows).toHaveLength(1); expect(events.filter(e=>e.action.endsWith("succeeded"))).toHaveLength(3);
+});
+test("other branch manager cannot edit or terminate",async()=>{
+ const {service,root}=setup(); await service.createEmployee({actor:actor("HR"),requestId:"create",...valid});
+ const manager=employeeTestActor("BRANCH_MANAGER"); manager.grants[0]!.branchId="99";
+ await expect(service.updateEmployee({actor:manager,requestId:"update",employeeId:"1",phone:"bad"})).rejects.toMatchObject({code:"FORBIDDEN_SCOPE"});
+ await expect(service.changeEmployeeStatus({actor:manager,requestId:"end",employeeId:"1",status:"terminated",terminatedAt:"2026-09-27",reason:"left"})).rejects.toMatchObject({code:"FORBIDDEN_SCOPE"});
+ expect(root.rows[0]!.phone).toBeNull(); expect(root.rows[0]!.status).toBe("active");
+});
+
+for (const role of ["EMPLOYEE", "SUPERVISOR"] as const) test(`${role} cannot mutate employee profiles or status`, async()=>{
+ const {service,root}=setup(); await service.createEmployee({actor:actor("HR"),requestId:"create",...valid});
+ await expect(service.updateEmployee({actor:employeeTestActor(role),requestId:"update",employeeId:"1",phone:"bad"})).rejects.toMatchObject({code:"FORBIDDEN_SCOPE"});
+ await expect(service.changeEmployeeStatus({actor:employeeTestActor(role),requestId:"end",employeeId:"1",status:"terminated",terminatedAt:"2026-09-27",reason:"left"})).rejects.toMatchObject({code:"FORBIDDEN_SCOPE"});
+ expect(root.rows[0]!.phone).toBeNull(); expect(root.rows[0]!.status).toBe("active");
+});
+
+for (const operation of ["profile", "status"] as const) test(`transfer committed before ${operation} scope read denies former branch without writes`, async()=>{
+ const {service,root}=setup({beforeScope(){}});
+ await service.createEmployee({actor:actor("HR"),requestId:"create",...valid});
+ const command={actor:employeeTestActor("BRANCH_MANAGER"),requestId:"race",employeeId:"1"};
+ const mutation=operation==="profile" ? service.updateEmployee({...command,phone:"bad"}) : service.changeEmployeeStatus({...command,status:"inactive",terminatedAt:null,reason:"race"});
+ await expect(mutation).rejects.toMatchObject({code:"FORBIDDEN_SCOPE"});
+ expect(root.rows[0]!.phone).toBeNull();expect(root.rows[0]!.status).toBe("active");
 });

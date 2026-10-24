@@ -50,7 +50,7 @@ const setup = (source = records) => {
         visibility.departments.some((scope) => scope.branchId === record.currentAssignment!.branchId && scope.departmentId === record.currentAssignment!.departmentId)) ? record : null;
     },
   };
-  const service = createEmployeeService({ rootExecutor: {} as never, repository, actions, today: () => "2026-09-23" });
+  const service = createEmployeeService({ payroll: { async serialize() {} }, rootExecutor: {} as never, repository, actions, today: () => "2026-09-23" });
   return { controller: createEmployeeController(service), service, events, actions };
 };
 
@@ -69,9 +69,13 @@ describe("A3 scoped employee reads", () => {
       expect(result.data.map((item) => item.id)).toEqual([...ids]);
       expect(events).toHaveLength(1);
       expect(JSON.stringify(result)).not.toContain("1234567890123");
-      if (subject.grants[0]!.scope === "department" || subject.grants[0]!.scope === "branch") {
+      if (subject.grants[0]!.scope === "department") {
         expect(JSON.stringify(result)).not.toContain("private@example.test");
         expect(JSON.stringify(result)).not.toContain("0812345678");
+      }
+      if (subject.grants[0]!.scope === "branch") {
+        expect(result.data[0]).toMatchObject({ phone: "0812345678", personal_email: "private@example.test" });
+        expect(JSON.stringify(result)).not.toContain("national_id_masked");
       }
     }
   });

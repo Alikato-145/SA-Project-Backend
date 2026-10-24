@@ -1,3 +1,4 @@
+import type { PayrollInputService } from "../payroll/payroll.service";
 import type { EmploymentAssignmentService } from "../employment-assignment/employment-assignment.service";
 import { createActionContext } from "../../core/audit/action-context";
 import type { ActionObserver } from "../../core/audit/action-observer";
@@ -9,11 +10,11 @@ import type { EmployeeCreateCommand, EmployeeListFilters, EmployeeStatus, Employ
 import type { AssignmentCommand } from "../employment-assignment/employment-assignment.dto";
 import type { OnboardingAccountCreationPort, OnboardingAssignmentPort, OnboardingBankPort, OnboardingHolidayPort } from "./employee.ports";
 import { employeeRepository, type EmployeeReadRecord, type EmployeeRepositoryPort, type EmployeeWriteRepositoryPort } from "./employee.repository";
-import { canAdministerEmployees, projectEmployeeVisibility } from "./employee.scope";
+import { canAdministerEmployees, canManageEmployeeBranch, projectEmployeeVisibility } from "./employee.scope";
 import { employeeAuditSnapshot } from "./employee.types";
 import { parseBusinessDate, parseEmployeeId } from "./employee.validation";
 
-export type EmployeeViewKind = "team" | "own" | "hr";
+export type EmployeeViewKind = "team" | "own" | "hr" | "manager";
 export interface VisibleEmployee { record: EmployeeReadRecord; view: EmployeeViewKind }
 export interface EmployeePage {
   items: VisibleEmployee[];
@@ -22,6 +23,7 @@ export interface EmployeePage {
   total: number;
 }
 export interface EmployeeServiceDependencies {
+  payroll: Pick<PayrollInputService, "serialize">;
   rootExecutor: DatabaseExecutor;
   repository?: EmployeeRepositoryPort;
   writeRepository?: EmployeeWriteRepositoryPort;
@@ -39,6 +41,7 @@ const currentBangkokDate = (): string => new Intl.DateTimeFormat("sv-SE", {
 const viewFor = (actor: AuthenticatedActor, record: EmployeeReadRecord): EmployeeViewKind => {
   const visibility = projectEmployeeVisibility(actor);
   if (visibility.all) return "hr";
+  if (canManageEmployeeBranch(actor, record.currentAssignment?.branchId ?? null)) return "manager";
   return visibility.selfEmployeeId === record.id ? "own" : "team";
 };
 const requireWrites = (dependencies: EmployeeServiceDependencies) => {
@@ -105,9 +108,10 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
       return dependencies.actions.observeMutation(context, () => {
         const writes = requireWrites(dependencies);
         return writes.runner.transaction(async (executor) => {
-          requireAdministrator(command.actor);
+          await dependencies.payroll.serialize(executor);
           const current = await writes.repository.findById(executor, id, fullVisibility, today());
           if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          if (!canManageEmployeeBranch(command.actor, current.currentAssignment?.branchId ?? null)) throw new ApplicationError("FORBIDDEN_SCOPE");
           const update: EmployeeUpdateCommand = { ...command };
           delete (update as Record<string, unknown>).actor; delete (update as Record<string, unknown>).requestId; delete (update as Record<string, unknown>).employeeId;
           if (Object.keys(update).length === 0) throw new ApplicationError("VALIDATION_ERROR");
@@ -118,7 +122,7 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
           const updated = await writes.repository.updateIdentity(executor, id, update);
           if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
           const receipt = await writes.domain.record(executor, context, { oldData: snapshot(current), newData: snapshot(updated) });
-          return writes.domain.complete({ record: updated, view: "hr" as const }, receipt);
+          return writes.domain.complete({ record: updated, view: viewFor(command.actor, current) }, receipt);
         });
       });
     },
@@ -128,7 +132,8 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
         const writes = requireWrites(dependencies);
         if (!dependencies.onboarding) throw new Error("Employee onboarding dependencies are not configured");
         return writes.runner.transaction(async (executor) => {
-          requireAdministrator(command.actor); validateCreate(command.employee);
+          if (!canManageEmployeeBranch(command.actor, command.assignment.branchId) || (!canAdministerEmployees(command.actor) && (command.account !== undefined || command.bankAccount !== undefined))) throw new ApplicationError("FORBIDDEN_SCOPE");
+          validateCreate(command.employee);
           if (await writes.repository.findIdentityConflict(executor, command.employee)) throw new ApplicationError("DUPLICATE_IDENTITY");
           const employee = await writes.repository.insert(executor, command.employee);
           const assignment = await dependencies.onboarding!.assignment.createAssignmentInTransaction(executor, { actor: command.actor, employeeId: employee.id, ...command.assignment });
@@ -137,7 +142,7 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
           const account = command.account ? await dependencies.onboarding!.account.createAccountInTransaction(executor, { actor: command.actor, username: command.account.username, employeeId: employee.id }) : null;
           const success = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.onboard", target: { tableName: "employees", recordId: employee.id } });
           const receipt = await writes.domain.record(executor, success, { newData: { ...snapshot(employee), assignment_id: assignment.id, bank_account_id: bank?.id ?? null, holiday_ids: holidays.map(item => item.id), account_id: account?.account.id ?? null } });
-          return writes.domain.complete({ employee: { record: employee, view: "hr" as const }, assignmentId: assignment.id, bankAccountId: bank?.id ?? null, holidayIds: holidays.map(item => item.id), accountId: account?.account.id ?? null, temporaryPassword: account?.temporaryPassword ?? null }, receipt);
+          return writes.domain.complete({ employee: { record: employee, view: canAdministerEmployees(command.actor) ? "hr" as const : "manager" as const }, assignmentId: assignment.id, bankAccountId: bank?.id ?? null, holidayIds: holidays.map(item => item.id), accountId: account?.account.id ?? null, temporaryPassword: account?.temporaryPassword ?? null }, receipt);
         });
       });
     },
@@ -147,9 +152,10 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
       return dependencies.actions.observeMutation(context, () => {
         const writes = requireWrites(dependencies);
         return writes.runner.transaction(async (executor) => {
-          requireAdministrator(command.actor);
+          await dependencies.payroll.serialize(executor);
           const current = await writes.repository.findById(executor, id, fullVisibility, today());
           if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          if (!canManageEmployeeBranch(command.actor, current.currentAssignment?.branchId ?? null)) throw new ApplicationError("FORBIDDEN_SCOPE");
           const reason = command.reason.trim(); if (!reason || reason.length > 500) throw new ApplicationError("VALIDATION_ERROR");
           if (command.status === "terminated") { if (!command.terminatedAt) throw new ApplicationError("VALIDATION_ERROR"); parseBusinessDate(command.terminatedAt, "terminated_at"); if (command.terminatedAt < current.hireDate) throw new ApplicationError("VALIDATION_ERROR"); }
           else if (command.terminatedAt !== null) throw new ApplicationError("VALIDATION_ERROR");
@@ -161,7 +167,7 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
           const updated = await writes.repository.updateStatus(executor, id, command.status, command.status === "terminated" ? command.terminatedAt : null);
           if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
           const receipt = await writes.domain.record(executor, context, { oldData: snapshot(current), newData: snapshot(updated), reason });
-          return writes.domain.complete({ record: updated, view: "hr" as const }, receipt);
+          return writes.domain.complete({ record: updated, view: viewFor(command.actor, current) }, receipt);
         });
       });
     },
