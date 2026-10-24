@@ -9,8 +9,9 @@ export const createSessionJwtCodec = (secret: string): SessionJwtCodec => {
   const key = new TextEncoder().encode(secret);
 
   return {
-    sign({ sub, exp }) {
+    sign({ sub, jti, exp }) {
       return new SignJWT({ sub })
+        .setJti(jti)
         .setProtectedHeader({ alg: "HS256" })
         .setIssuedAt()
         .setExpirationTime(exp)

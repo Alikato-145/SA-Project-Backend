@@ -167,6 +167,11 @@ const fixture = (
 ) => {
   const repository = new MemoryUserAccountRepository(account);
   const writer = new MemoryWriter();
+  const revoked = new Set<string>();
+  const sessionRevocations = {
+    async isRevoked(token: string) { return revoked.has(token); },
+    async revokeSession(token: string) { revoked.add(token); },
+  };
   let unknownVerifications = 0;
   let knownVerifications = 0;
   const service = createUserAccountService({
@@ -174,6 +179,7 @@ const fixture = (
     repository,
     repositoryFactory: () => repository,
     tokenService: tokenService(),
+    sessionRevocations,
     actions: new ActionObserver(rootExecutor, writer),
     domain: new DomainAuditObserver(writer),
     now: () => new Date(testTime),
@@ -424,6 +430,18 @@ describe("user account authentication service", () => {
       "authentication.session.view.succeeded",
       "authentication.session.logout.succeeded",
     ]);
+  });
+
+  test("rejects replay of a logged-out token for actor and password access", async () => {
+    const state = fixture();
+    expect((await state.service.getCurrentActor({ token: "token-12", requestId: "before" })).account.id).toBe("12");
+    await state.service.logout({ token: "token-12", requestId: "logout" });
+    await state.service.logout({ token: "token-12", requestId: "logout-repeat" });
+    await expectCode(state.service.getCurrentActor({ token: "token-12", requestId: "replay" }), "AUTH_REQUIRED");
+    await expectCode(state.service.changePassword({ token: "token-12", requestId: "replay-password",
+      currentPassword: "correct", newPassword: "new-password-123" }), "AUTH_REQUIRED");
+    expect(state.repository.account?.passwordHash).toBe("stored-hash");
+    expect(JSON.stringify(state.writer.events)).not.toContain("token-12");
   });
 
   test("audits an unauthenticated current-actor failure once", async () => {

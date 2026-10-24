@@ -31,7 +31,7 @@ const activeRecord = (): ActorAccountRecord => ({
   ],
 });
 
-const createHarness = (loader: AuthenticatedActorLoader) =>
+const createHarness = (loader: AuthenticatedActorLoader, isRevoked = async (_token: string) => false) =>
   new Elysia()
     .error({ APPLICATION_ERROR: Error })
     .onError(({ error, set }) => {
@@ -45,6 +45,7 @@ const createHarness = (loader: AuthenticatedActorLoader) =>
         allowedOrigins: [allowedOrigin],
         sessionTtlSeconds: 28_800,
         actorLoader: loader,
+        sessionRevocations: { isRevoked },
         now: () => now,
       }),
     )
@@ -86,6 +87,13 @@ describe("authenticated request plugin", () => {
     const unknown = await app.handle(protectedRequest(token));
     expect(unknown.status).toBe(401);
     expect(await unknown.json()).toEqual({ code: "AUTH_REQUIRED", retry_at: null });
+  });
+
+  test("rejects a revoked token even with an active account", async () => {
+    const loader = { loadForAuthentication: async () => activeRecord() };
+    const token = await issueToken(loader);
+    const app = createHarness(loader, async (candidate) => candidate === token);
+    expect((await app.handle(protectedRequest(token))).status).toBe(401);
   });
 
   test("reloads account state so disablement applies on the next request", async () => {

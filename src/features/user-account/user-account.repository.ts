@@ -7,7 +7,7 @@ import type {
 } from "../../core/db/transaction";
 import { roles } from "../role/role.schema";
 import { employees } from "../employee/employee.schema";
-import { userAccountRoles, userAccounts } from "./user-account.schema";
+import { revokedSessionTokens, userAccountRoles, userAccounts } from "./user-account.schema";
 
 const roleCodes = new Set<RoleCode>([
   "EMPLOYEE",
@@ -95,6 +95,17 @@ const currentActorAccountSelection = {
 /** Persistence operations only; authentication policy remains in the service layer. */
 export class UserAccountRepository {
   constructor(private readonly executor: DatabaseExecutor = db) {}
+
+  async findSessionRevocation(tokenHash: string): Promise<boolean> {
+    const [record] = await this.executor.select({ id: revokedSessionTokens.id })
+      .from(revokedSessionTokens).where(eq(revokedSessionTokens.tokenHash, tokenHash)).limit(1);
+    return record !== undefined;
+  }
+
+  async insertSessionRevocation(record: { userAccountId: number; tokenHash: string; expiresAt: Date }): Promise<void> {
+    await this.executor.insert(revokedSessionTokens).values(record)
+      .onConflictDoNothing({ target: revokedSessionTokens.tokenHash });
+  }
 
   async findAuthenticationByUsername(
     username: string,

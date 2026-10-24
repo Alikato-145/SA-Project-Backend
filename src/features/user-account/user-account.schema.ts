@@ -88,3 +88,22 @@ export const userAccountRoles = pgTable(
     index("user_account_roles_role_idx").on(table.roleId),
   ],
 );
+
+// Store fingerprints only; raw bearer tokens never enter persistence or audit data.
+export const revokedSessionTokens = pgTable(
+  "revoked_session_tokens",
+  {
+    id: id(),
+    userAccountId: foreignId("user_account_id")
+      .notNull()
+      .references(() => userAccounts.id, restrict),
+    tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    revokedAt: instant("revoked_at").notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("revoked_session_tokens_hash_uidx").on(table.tokenHash),
+    index("revoked_session_tokens_expiry_idx").on(table.expiresAt),
+    check("chk_revoked_session_token_hash", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+  ],
+);

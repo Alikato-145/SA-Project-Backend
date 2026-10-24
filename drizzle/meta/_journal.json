@@ -8,6 +8,13 @@
       "when": 1789968829546,
       "tag": "0000_material_miek",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792867490833,
+      "tag": "0001_auth_session_revocation",
+      "breakpoints": true
     }
   ]
 }

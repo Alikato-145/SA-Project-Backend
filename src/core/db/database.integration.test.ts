@@ -82,9 +82,9 @@ catalogTest("PostgreSQL catalog contains the canonical baseline", async () => {
     )
   ).rows;
 
-  expect(Number(table_count)).toBe(36);
+  expect(Number(table_count)).toBe(37);
   expect(Number(enum_count)).toBe(22);
-  expect(Number(migration_count)).toBe(1);
+  expect(Number(migration_count)).toBe(2);
 });
 
 catalogTest("all domain primary keys use bigint", async () => {
@@ -102,7 +102,7 @@ catalogTest("all domain primary keys use bigint", async () => {
        and constraints.table_schema = 'public'`,
   );
 
-  expect(rows).toHaveLength(36);
+  expect(rows).toHaveLength(37);
   expect(rows.every(({ data_type }) => data_type === "bigint")).toBe(true);
 });
 

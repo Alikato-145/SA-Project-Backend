@@ -31,7 +31,14 @@ const createTokenTestApp = (now: () => number) =>
     });
 
 describe("session token", () => {
-  test("issues a signed token with only sub, iat, and eight-hour exp", async () => {
+  test("issues different tokens for independent logins in the same second", async () => {
+    const app = createTokenTestApp(() => issuedAtMs);
+    const first = await (await app.handle(new Request("http://test/issue"))).text();
+    const second = await (await app.handle(new Request("http://test/issue"))).text();
+    expect(first === second).toBe(false);
+  });
+
+  test("validates the session subject and eight-hour lifetime", async () => {
     const app = createTokenTestApp(() => issuedAtMs);
     const issueResponse = await app.handle(new Request("http://test/issue"));
     const token = await issueResponse.text();

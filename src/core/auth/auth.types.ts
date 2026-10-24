@@ -25,7 +25,7 @@ export interface AuthenticatedActor {
   grants: readonly AuthenticatedGrant[];
 }
 
-/** The complete application-owned payload of a session JWT. */
+/** Validated session identity and lifetime; authorization is loaded separately. */
 export interface SessionClaims {
   sub: string;
   iat: number;
@@ -39,6 +39,7 @@ export interface SessionClaims {
 export interface SessionJwtCodec {
   sign(payload: {
     sub: string;
+    jti: string;
     iat: true;
     exp: number;
   }): Promise<string>;

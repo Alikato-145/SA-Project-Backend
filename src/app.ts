@@ -76,6 +76,7 @@ import { roleRepository } from "./features/role/role.repository";
 import { shopRepository } from "./features/shop/shop.repository";
 import { createShopService } from "./features/shop/shop.service";
 import { createUserAccountRoutes, type UserAccountRoutesOptions } from "./features/user-account/user-account.routes";
+import { createUserAccountSessionService } from "./features/user-account/user-account.session-service";
 import { createUserAccountService } from "./features/user-account/user-account.service";
 import { authenticatedActorLoader } from "./features/user-account/user-account.auth-adapter";
 import { createUserAccountAdminRoutes, type UserAccountAdminRoutesOptions } from "./features/user-account/user-account.admin.routes";
@@ -90,10 +91,13 @@ const transactionRunner: TransactionRunner = {
   transaction: (work) => withTransaction(work),
 };
 
+const sessionRevocations = createUserAccountSessionService(userAccountRepository);
+
 const createAuthenticator = () => createRequestAuthenticator({
   jwtSecret: authConfig.jwtSecret,
   sessionTtlSeconds: authConfig.sessionTtlSeconds,
   actorLoader: authenticatedActorLoader,
+  sessionRevocations,
 });
 
 const concretePayrollOptions = (): PayrollRoutesOptions => ({
@@ -121,6 +125,7 @@ const concreteUserAccountOptions = (): UserAccountRoutesOptions => ({
   service: createUserAccountService({
     transactionRunner,
     repository: userAccountRepository,
+    sessionRevocations,
     repositoryFactory: createTransactionalUserAccountRepository,
     tokenService: createSessionTokenService(
       createSessionJwtCodec(authConfig.jwtSecret),

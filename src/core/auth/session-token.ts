@@ -7,6 +7,10 @@ import {
 
 const accountIdPattern = /^[1-9]\d*$/;
 
+export interface SessionRevocationChecker {
+  isRevoked(token: string): Promise<boolean>;
+}
+
 export interface SessionTokenService {
   issue(accountId: string): Promise<string>;
   verify(token: string | undefined): Promise<SessionClaims | null>;
@@ -51,6 +55,7 @@ export const createSessionTokenService = (
       const issuedAt = Math.floor(now() / 1_000);
       return codec.sign({
         sub: accountId,
+        jti: crypto.randomUUID(),
         iat: true,
         exp: issuedAt + ttlSeconds,
       });

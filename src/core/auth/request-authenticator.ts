@@ -3,7 +3,7 @@ import { ApplicationError } from "../errors/application.error";
 import type { AuthenticatedActorLoader } from "./auth.plugin";
 import { assertUsableAccount } from "./auth.plugin";
 import { SESSION_COOKIE_NAME, type AuthenticatedActor } from "./auth.types";
-import { createSessionTokenService } from "./session-token";
+import { createSessionTokenService, type SessionRevocationChecker } from "./session-token";
 
 const cookieValue = (request: Request, name: string): string | undefined => {
   const entry = request.headers.get("cookie")?.split(";").map((part) => part.trim())
@@ -17,6 +17,7 @@ export const createRequestAuthenticator = (options: {
   jwtSecret: string;
   sessionTtlSeconds: number;
   actorLoader: AuthenticatedActorLoader;
+  sessionRevocations: SessionRevocationChecker;
   now?: () => Date;
 }) => {
   const now = options.now ?? (() => new Date());
@@ -34,8 +35,9 @@ export const createRequestAuthenticator = (options: {
   }, { ttlSeconds: options.sessionTtlSeconds, now: () => now().getTime() });
 
   return async (request: Request): Promise<AuthenticatedActor> => {
-    const claims = await tokens.verify(cookieValue(request, SESSION_COOKIE_NAME));
-    if (!claims) throw new ApplicationError("AUTH_REQUIRED");
+    const token = cookieValue(request, SESSION_COOKIE_NAME);
+    const claims = await tokens.verify(token);
+    if (!claims || !token || await options.sessionRevocations.isRevoked(token)) throw new ApplicationError("AUTH_REQUIRED");
     const record = await options.actorLoader.loadForAuthentication(claims.sub);
     if (!record || record.accountId !== claims.sub) throw new ApplicationError("AUTH_REQUIRED");
     return assertUsableAccount(record, now());

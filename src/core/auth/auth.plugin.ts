@@ -9,7 +9,7 @@ import {
 } from "./auth.types";
 import { parseActiveGrant } from "./authorization";
 import { validateCookieMutationRequest } from "./csrf-origin";
-import { createSessionTokenService } from "./session-token";
+import { createSessionTokenService, type SessionRevocationChecker } from "./session-token";
 
 const idPattern = /^[1-9]\d*$/;
 
@@ -41,6 +41,7 @@ export interface AuthPluginOptions {
   allowedOrigins: readonly string[];
   sessionTtlSeconds: number;
   actorLoader: AuthenticatedActorLoader;
+  sessionRevocations: SessionRevocationChecker;
   now?: () => Date;
 }
 
@@ -147,7 +148,9 @@ export const createAuthPlugin = (options: AuthPluginOptions) => {
             now: () => now().getTime(),
           });
           const claims = await tokenService.verify(token);
-          if (!claims) throw new ApplicationError("AUTH_REQUIRED");
+          if (!claims || !token || await options.sessionRevocations.isRevoked(token)) {
+            throw new ApplicationError("AUTH_REQUIRED");
+          }
 
           const record = await options.actorLoader.loadForAuthentication(claims.sub);
           if (!record || record.accountId !== claims.sub) {

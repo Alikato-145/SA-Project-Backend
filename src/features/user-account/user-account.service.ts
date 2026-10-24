@@ -1,3 +1,4 @@
+import type { UserAccountSessionService } from "./user-account.session-service";
 import { accountAuditSnapshot } from "../../core/audit/audit-redaction";
 import { createActionContext } from "../../core/audit/action-context";
 import {
@@ -99,6 +100,7 @@ export interface UserAccountServiceDependencies {
     transaction: DatabaseTransaction,
   ) => AuthenticationRepository;
   tokenService: SessionTokenService;
+  sessionRevocations: UserAccountSessionService;
   actions: ActionObserver;
   domain: DomainAuditObserver;
   now?: () => Date;
@@ -207,6 +209,12 @@ export const createUserAccountService = (
   const unknownPasswordVerifier =
     dependencies.unknownAccountPasswordVerifier ??
     verifyPasswordForUnknownAccount;
+
+  const verifyActiveSession = async (token: string | undefined) => {
+    const claims = await dependencies.tokenService.verify(token);
+    if (!claims || !token || await dependencies.sessionRevocations.isRevoked(token)) return null;
+    return claims;
+  };
 
   const service: UserAccountAuthenticationService = {
     async login(command) {
@@ -322,7 +330,7 @@ export const createUserAccountService = (
     },
 
     async logout(command) {
-      const claims = await dependencies.tokenService.verify(command.token);
+      const claims = await verifyActiveSession(command.token);
       const context = createActionContext({
         requestId: command.requestId,
         actorAccountId: claims?.sub ?? null,
@@ -332,11 +340,15 @@ export const createUserAccountService = (
           recordId: claims?.sub ?? "self",
         },
       });
-      await dependencies.actions.observeRead(context, async () => undefined);
+      await dependencies.actions.observeRead(context, async () => {
+        if (claims && command.token) {
+          await dependencies.sessionRevocations.revokeSession(command.token, claims);
+        }
+      });
     },
 
     async getCurrentActor(command) {
-      const claims = await dependencies.tokenService.verify(command.token);
+      const claims = await verifyActiveSession(command.token);
       const context = createActionContext({
         requestId: command.requestId,
         actorAccountId: claims?.sub ?? null,
@@ -363,7 +375,7 @@ export const createUserAccountService = (
     },
 
     async changePassword(command) {
-      const claims = await dependencies.tokenService.verify(command.token);
+      const claims = await verifyActiveSession(command.token);
       const accountId = Number(claims?.sub);
       if (!claims || !Number.isSafeInteger(accountId) || accountId <= 0) {
         const error = new ApplicationError("AUTH_REQUIRED");
