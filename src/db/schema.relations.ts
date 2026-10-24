@@ -14,7 +14,7 @@ import { employees } from "../features/employee/employee.schema";
 import { employmentAssignments } from "../features/employment-assignment/employment-assignment.schema";
 import { holidayCalendars } from "../features/holiday-calendar/holiday-calendar.schema";
 import { leaveApprovalActions, leaveQuotas, leaveRequestDays, leaveRequests, leaveTypes } from "../features/leave/leave.schema";
-import { loanInstallments, loans } from "../features/loan/loan.schema";
+import { loanInstallments, loans, loanRequests } from "../features/loan/loan.schema";
 import { overtimeApprovalActions, overtimeRecords } from "../features/overtime/overtime.schema";
 import { payrollAdjustments, payrollConfigurations, payrollItems, payrollPeriods, payrollRecords } from "../features/payroll/payroll.schema";
 import { emailDeliveryLogs, payslips } from "../features/payslip/payslip.schema";
@@ -234,4 +234,11 @@ export const attachmentsRelations = relations(attachments, ({ one }) => ({
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   actor: one(userAccounts, { fields: [auditLogs.actorUserAccountId], references: [userAccounts.id] }),
+}));
+
+export const loanRequestsRelations = relations(loanRequests, ({one}) => ({
+ employee: one(employees, {fields:[loanRequests.employeeId],references:[employees.id]}),
+ requestedBy: one(userAccounts, {fields:[loanRequests.requestedByUserAccountId],references:[userAccounts.id],relationName:"loanRequestRequester"}),
+ decidedBy: one(userAccounts, {fields:[loanRequests.decidedByUserAccountId],references:[userAccounts.id],relationName:"loanRequestDecider"}),
+ loan: one(loans, {fields:[loanRequests.loanId],references:[loans.id]}),
 }));

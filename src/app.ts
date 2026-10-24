@@ -1,3 +1,6 @@
+import { createLoanRequestRuntimeService } from "./features/loan/loan-request.runtime.service";
+import { LoanRequestController } from "./features/loan/loan-request.controller";
+import { createLoanRequestRoutes } from "./features/loan/loan-request.routes";
 import { accessLog } from "./core/middleware/access-log";
 import { createHealthRoutes } from "./core/health/health.routes";
 import { createAttachmentRoutes } from "./features/attachment/attachment.routes";
@@ -270,11 +273,12 @@ export const concreteOperationsOptions = () => {
  const schedule=createBranchScheduleRuntimeService(runtime);
  const holiday=createHolidayCalendarRuntimeService(runtime);
  const attendance=createAttendanceRuntimeService(runtime,schedule,holiday);
+ const loan=createLoanRuntimeService(runtime);
  const leaveEffect=new AttendanceLeaveEffect(new DrizzleAttendanceLeaveEffectRepository(),{branchAtDate:async(id,date)=>(await context.context(id,date)).branchId});
  return {
   authenticate:createAuthenticator(),allowedOrigins:authConfig.allowedOrigins,
   attendance,schedule,holiday,leave:createLeaveRuntimeService(runtime,leaveEffect),
-  overtime:createOvertimeRuntimeService(runtime,schedule,holiday,attendance),advance:createAdvanceRuntimeService(runtime,attendance),loan:createLoanRuntimeService(runtime),debt:createDebtRuntimeService(runtime),
+  overtime:createOvertimeRuntimeService(runtime,schedule,holiday,attendance),advance:createAdvanceRuntimeService(runtime,attendance),loan,loanRequest:createLoanRequestRuntimeService(runtime,loan),debt:createDebtRuntimeService(runtime),
  };
 };
 
@@ -310,6 +314,7 @@ export const createApp = (
     .use(createOvertimeRoutes({...operationsOptions,controller:new OvertimeController(operationsOptions.overtime)}))
     .use(createAdvanceRoutes({...operationsOptions,controller:new AdvanceController(operationsOptions.advance)}))
     .use(createLoanRoutes({...operationsOptions,controller:new LoanController(operationsOptions.loan)}))
+    .use(createLoanRequestRoutes({...operationsOptions,controller:new LoanRequestController(operationsOptions.loanRequest)}))
     .use(createDebtRoutes({...operationsOptions,controller:new DebtController(operationsOptions.debt)}));
 
 // Person C owns this composition root. Feature owners export route plugins;

@@ -46,3 +46,6 @@ export const payrollItemTypeEnum = pgEnum("payroll_item_type", payrollItemTypeVa
 export const payrollAdjustmentStatusEnum = pgEnum("payroll_adjustment_status", payrollAdjustmentStatusValues);
 export const payslipStatusEnum = pgEnum("payslip_status", payslipStatusValues);
 export const emailDeliveryStatusEnum = pgEnum("email_delivery_status", emailDeliveryStatusValues);
+
+export const loanRequestStatusValues = ["pending", "approved", "rejected"] as const;
+export const loanRequestStatusEnum = pgEnum("loan_request_status", loanRequestStatusValues);

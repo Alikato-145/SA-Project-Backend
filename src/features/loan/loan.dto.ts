@@ -17,3 +17,13 @@ export type LoanInstallment = {
   createdAt: Date; updatedAt: Date;
 };
 export type LoanWithInstallments = { loan: Loan; installments: LoanInstallment[] };
+
+export type RequestLoanCommand = {
+ employeeId: number; principalAmount: string; installmentCount: number; reason: string;
+};
+export type LoanRequest = RequestLoanCommand & {
+ id: number; status: "pending" | "approved" | "rejected";
+ requestedByUserAccountId: number; requestedAt: Date;
+ decidedByUserAccountId: number | null; decidedAt: Date | null;
+ decisionNote: string | null; loanId: number | null;
+};
