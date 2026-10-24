@@ -64,6 +64,7 @@ export interface PayrollCalculationInput {
   employeeCode: string;
   assignmentId: string;
   branchId: string;
+  isSocialSecurityMember?: boolean;
   baseSalary: string;
   welfare: string;
   standardWorkDays: string;
@@ -85,6 +86,7 @@ export interface PayrollCalculationInput {
     lateMinutes: number;
     deductible: boolean;
     assignmentId?: string;
+    isSocialSecurityMember?: boolean;
     baseSalary?: string;
     welfare?: string;
     standardWorkDays?: string;
@@ -106,6 +108,7 @@ export interface PayrollCalculationInput {
     dayUnits: string | null;
     rate: string;
     configurationId: string | null;
+    isSocialSecurityMember?: boolean;
     baseSalary?: string;
     standardWorkDays?: string;
   }[];
@@ -140,6 +143,8 @@ export interface PayrollCalculatedRecord {
   employeeId: string;
   assignmentId: string;
   branchId: string;
+  isSocialSecurityMemberSnapshot?: boolean;
+  socialSecurityBaseSnapshot?: string | null;
   baseSalarySnapshot: string;
   welfareSnapshot: string;
   totalEarnings: string;

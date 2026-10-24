@@ -1,3 +1,5 @@
+import { normalizePromptpayPhone, type EmployeePaymentDestination } from "./employee.payment-destination";
+import { employeePaymentRepository, type EmployeePaymentRepositoryPort } from "./employee.repository";
 import type { PayrollInputService } from "../payroll/payroll.service";
 import type { EmploymentAssignmentService } from "../employment-assignment/employment-assignment.service";
 import { createActionContext } from "../../core/audit/action-context";
@@ -26,6 +28,7 @@ export interface EmployeeServiceDependencies {
   payroll: Pick<PayrollInputService, "serialize">;
   rootExecutor: DatabaseExecutor;
   repository?: EmployeeRepositoryPort;
+  paymentRepository?: EmployeePaymentRepositoryPort;
   writeRepository?: EmployeeWriteRepositoryPort;
   transactionRunner?: TransactionRunner;
   actions: ActionObserver;
@@ -63,7 +66,37 @@ const hasVisibility = (actor: AuthenticatedActor): boolean => {
 export const createEmployeeService = (dependencies: EmployeeServiceDependencies) => {
   const repository = dependencies.repository ?? employeeRepository;
   const today = dependencies.today ?? currentBangkokDate;
+  const paymentRepository = dependencies.paymentRepository ?? employeePaymentRepository;
   return {
+    async getPaymentDestination(command: { actor: AuthenticatedActor; requestId: string; employeeId: string }): Promise<EmployeePaymentDestination> {
+      const id = String(parseEmployeeId(command.employeeId, "employee_id"));
+      const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.payment_destination.read", target: { tableName: "employees", recordId: id } });
+      return dependencies.actions.observeRead(context, async () => {
+        if (!canAdministerEmployees(command.actor) && command.actor.employeeId !== id) throw new ApplicationError("FORBIDDEN_SCOPE");
+        const destination = await paymentRepository.findPaymentDestination(dependencies.rootExecutor, id);
+        if (!destination) throw new ApplicationError("RESOURCE_NOT_FOUND");
+        return destination;
+      });
+    },
+    async updatePaymentDestination(command: EmployeePaymentDestination & { actor: AuthenticatedActor; requestId: string; employeeId: string }): Promise<EmployeePaymentDestination> {
+      const id = String(parseEmployeeId(command.employeeId, "employee_id"));
+      const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.payment_destination.update", target: { tableName: "employees", recordId: id } });
+      return dependencies.actions.observeMutation(context, () => {
+        requireAdministrator(command.actor);
+        if (!["cash", "transfer"].includes(command.paymentMethod)) throw new ApplicationError("VALIDATION_ERROR");
+        const input = { paymentMethod: command.paymentMethod, promptpayPhone: normalizePromptpayPhone(command.promptpayPhone) };
+        const writes = requireWrites(dependencies);
+        return writes.runner.transaction(async executor => {
+          const current = await paymentRepository.findPaymentDestination(executor, id, true);
+          if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          const updated = await paymentRepository.updatePaymentDestination(executor, id, input);
+          if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
+          const safe = (value: EmployeePaymentDestination) => ({ payment_method: value.paymentMethod, has_promptpay_phone: value.promptpayPhone !== null });
+          const receipt = await writes.domain.record(executor, context, { oldData: safe(current), newData: safe(updated) });
+          return writes.domain.complete(updated, receipt);
+        });
+      });
+    },
     async listEmployees(command: EmployeeListFilters & { actor: AuthenticatedActor; requestId: string }): Promise<EmployeePage> {
       const context = createActionContext({
         requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.list",

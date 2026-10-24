@@ -48,6 +48,7 @@ export const employmentAssignments = pgTable(
       .default(sql`0`),
     effectiveFrom: date("effective_from").notNull(),
     effectiveTo: date("effective_to"),
+    isSocialSecurityMember: boolean("is_social_security_member").notNull().default(true),
     isPrimary: boolean("is_primary").notNull().default(true),
     createdByUserAccountId: foreignId("created_by_user_account_id"),
     ...timestamps,

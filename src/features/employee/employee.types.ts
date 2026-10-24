@@ -18,6 +18,7 @@ export const ASSIGNMENT_AUDIT_FIELDS = [
   "employment_type",
   "base_salary",
   "welfare_amount",
+  "is_social_security_member",
   "effective_from",
   "effective_to",
 ] as const;

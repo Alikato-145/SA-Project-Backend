@@ -1,3 +1,4 @@
+import type { EmployeePaymentDestination } from "./employee.payment-destination";
 import { and, asc, count, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { DatabaseExecutor } from "../../core/db/transaction";
@@ -165,4 +166,20 @@ export const employeeRepository: EmployeeWriteRepositoryPort = {
     return row ? projectEmployee(row) : null;
   },
 
+};
+
+export interface EmployeePaymentRepositoryPort {
+  findPaymentDestination(executor: DatabaseExecutor, employeeId: string, forUpdate?: boolean): Promise<EmployeePaymentDestination | null>;
+  updatePaymentDestination(executor: DatabaseExecutor, employeeId: string, input: EmployeePaymentDestination): Promise<EmployeePaymentDestination | null>;
+}
+export const employeePaymentRepository: EmployeePaymentRepositoryPort = {
+  async findPaymentDestination(executor, employeeId, forUpdate = false) {
+    const query = executor.select({ paymentMethod: employees.paymentMethod, promptpayPhone: employees.promptpayPhone }).from(employees).where(eq(employees.id, numberId(employeeId))).limit(1);
+    const [row] = await (forUpdate ? query.for("update") : query);
+    return row ?? null;
+  },
+  async updatePaymentDestination(executor, employeeId, input) {
+    const [row] = await executor.update(employees).set({ ...input, updatedAt: new Date() }).where(eq(employees.id, numberId(employeeId))).returning({ paymentMethod: employees.paymentMethod, promptpayPhone: employees.promptpayPhone });
+    return row ?? null;
+  },
 };

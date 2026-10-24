@@ -42,6 +42,7 @@ const onboardingBody = t.Object({
     employment_type: t.String(),
     base_salary: t.String(),
     welfare_amount: t.String(),
+    is_social_security_member: t.Optional(t.Boolean()),
     effective_from: t.String(),
     effective_to: t.Optional(nullableString),
   }, { additionalProperties: false }),
@@ -86,6 +87,8 @@ export const createEmployeeRoutes = (options: EmployeeRoutesOptions) => {
       set.status = result.status;
       return result.body;
     })
+    .get("/employees/:employee_id/payment-destination", ({ actor, params, requestId }) => controller.paymentDestination({ actor, employeeId: params.employee_id, requestId }), { params: t.Object({ employee_id: decimalId }, { additionalProperties: false }) })
+    .put("/employees/:employee_id/payment-destination", ({ actor, params, body, requestId }) => controller.updatePaymentDestination({ actor, employeeId: params.employee_id, body, requestId }), { params: t.Object({ employee_id: decimalId }, { additionalProperties: false }), body: t.Object({ payment_method: t.Union([t.Literal("cash"), t.Literal("transfer")]), promptpay_phone: t.Union([t.String({ maxLength: 40 }), t.Null()]) }, { additionalProperties: false }) })
     .get("/employees", ({ actor, query, requestId }) =>
       controller.list({ actor, query, requestId }), { query: listQuery })
     .post("/employees/onboard", ({ actor, body, requestId }) =>

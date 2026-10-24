@@ -23,6 +23,8 @@ const capturedId = (index: number) => (match: RegExpMatchArray) => {
 
 /** Public A3 actions only. Domain services own successful read/mutation outcomes. */
 export const A3_ACTION_REGISTRY: readonly RegisteredA3Action[] = [
+  { method: "GET", pattern: /^\/api\/v1\/employees\/([^/]+)\/payment-destination\/?$/, actionBase: "employee.payment_destination.read", tableName: "employees", recordId: capturedId(1) },
+  { method: "PUT", pattern: /^\/api\/v1\/employees\/([^/]+)\/payment-destination\/?$/, actionBase: "employee.payment_destination.update", tableName: "employees", recordId: capturedId(1) },
   {
     method: "GET",
     pattern: /^\/api\/v1\/employees\/?$/,

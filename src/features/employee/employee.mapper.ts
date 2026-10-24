@@ -47,3 +47,5 @@ export const toEmployeeOnboardingResponseDto = (result: {
     ? {}
     : { temporary_password: result.temporaryPassword }),
 });
+
+export const toPaymentDestinationDto = (value: import("./employee.payment-destination").EmployeePaymentDestination): import("./employee.dto").EmployeePaymentDestinationResponseDto => ({ payment_method: value.paymentMethod, promptpay_phone: value.promptpayPhone });

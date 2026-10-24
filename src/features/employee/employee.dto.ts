@@ -150,3 +150,6 @@ export const parseEmployeeOnboarding = (body: EmployeeOnboardingBodyDto) => {
   if (body.account !== undefined) { const username = text(body.account.username, "username", 100); if (!/^[A-Za-z0-9._-]{3,100}$/.test(username)) invalid("username"); account = { username }; }
   return { employee: parseEmployeeCreate(body.employee), assignment: parseAssignmentBody(body.assignment), bankAccount: body.bank_account === undefined ? undefined : parseBankCreate(body.bank_account), weeklyHolidays: (body.weekly_holidays ?? []).map(parseHolidayCreate), account };
 };
+
+export interface EmployeePaymentDestinationBodyDto { payment_method: "cash" | "transfer"; promptpay_phone: string | null }
+export interface EmployeePaymentDestinationResponseDto { payment_method: "cash" | "transfer"; promptpay_phone: string | null }

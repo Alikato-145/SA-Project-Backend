@@ -196,7 +196,7 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
       const [inserted] = await executor.insert(payrollRecords).values({
         payrollPeriodId: period, employeeId: numericId(record.employeeId), employmentAssignmentId: numericId(record.assignmentId),
         status: "calculated", baseSalarySnapshot: record.baseSalarySnapshot,
-        welfareSnapshot: record.welfareSnapshot, totalEarnings: record.totalEarnings,
+        welfareSnapshot: record.welfareSnapshot, isSocialSecurityMemberSnapshot: record.isSocialSecurityMemberSnapshot ?? true, socialSecurityBaseSnapshot: record.socialSecurityBaseSnapshot, totalEarnings: record.totalEarnings,
         totalDeductions: record.totalDeductions, netPay: record.netPay,
         calculatedAt: new Date(), calculatedByUserAccountId: numericId(actorId), lockedAt: null,
       }).returning({ id: payrollRecords.id });
@@ -322,6 +322,7 @@ export class DrizzlePayrollRepository implements PayrollRepository {
       id: payrollRecords.id, periodId: payrollRecords.payrollPeriodId,
       employeeId: payrollRecords.employeeId, assignmentId: payrollRecords.employmentAssignmentId,
       branchId: employmentAssignments.branchId, status: payrollRecords.status,
+      isSocialSecurityMemberSnapshot: payrollRecords.isSocialSecurityMemberSnapshot, socialSecurityBaseSnapshot: payrollRecords.socialSecurityBaseSnapshot,
       baseSalarySnapshot: payrollRecords.baseSalarySnapshot, welfareSnapshot: payrollRecords.welfareSnapshot,
       totalEarnings: payrollRecords.totalEarnings, totalDeductions: payrollRecords.totalDeductions,
       netPay: payrollRecords.netPay,
@@ -335,6 +336,7 @@ export class DrizzlePayrollRepository implements PayrollRepository {
     return {
       id: id(row.id), periodId: id(row.periodId), employeeId: id(row.employeeId),
       assignmentId: id(row.assignmentId), branchId: id(row.branchId), status: row.status,
+      isSocialSecurityMemberSnapshot: row.isSocialSecurityMemberSnapshot, socialSecurityBaseSnapshot: row.socialSecurityBaseSnapshot,
       baseSalarySnapshot: row.baseSalarySnapshot, welfareSnapshot: row.welfareSnapshot,
       totalEarnings: row.totalEarnings, totalDeductions: row.totalDeductions, netPay: row.netPay,
       items: items.map((item) => ({
@@ -355,7 +357,7 @@ export class DrizzlePayrollRepository implements PayrollRepository {
         branchIds === null ? undefined : inArray(employmentAssignments.branchId, branchIds.map(numericId)),
       )).orderBy(asc(payrollRecords.employeeId));
     const records = await Promise.all(rows.map((row) => this.findRecordDetail(periodId, id(row.id))));
-    return records.filter((record): record is PayrollRecordDetail => record !== null);
+    return records.filter((record) => record !== null);
   }
   async listPeriodRoster(period:PayrollPeriodRecord,branchIds:readonly string[] | null):Promise<PayrollRosterEntry[]> {
     if(branchIds !== null && !branchIds.length)return [];
@@ -450,7 +452,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
     const blockers: PayrollBlocker[] = [];
     const inputs: PayrollCalculationInput[] = [];
     for (const employeeAssignments of assignmentsByEmployee.values()) {
-      const snapshotRow = payrollEffectiveOn(employeeAssignments.map((row) => row.assignment), earningEnd) ?? employeeAssignments[0]!.assignment;
+      const snapshotRow = payrollEffectiveOn(employeeAssignments.map((row) => row.assignment), earningEnd) ?? employeeAssignments.map(row => row.assignment).sort((a,b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0]!;
       const employeeCode = employeeAssignments[0]!.employeeCode;
       const assignment = snapshotRow;
       const employeeId = id(assignment.employeeId);
@@ -569,7 +571,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         rememberConfiguration(lateRate, row.workDate);
         dailyInputs.push({ id: id(row.id), date: row.workDate, status: row.status,
           lateMinutes: row.lateMinutes, deductible: row.isDeductible, baseSalary: dayAssignment.baseSalary,
-          welfare: dayAssignment.welfareAmount, standardWorkDays: standardWorkDays.numericValue,
+          isSocialSecurityMember: dayAssignment.isSocialSecurityMember, welfare: dayAssignment.welfareAmount, standardWorkDays: standardWorkDays.numericValue,
           assignmentId: id(dayAssignment.id), standardWorkDaysConfigurationId: standardWorkDays.id,
           absenceRate: absenceRate.numericValue, lateRate: lateRate.numericValue,
           absenceConfigurationId: absenceRate.id, lateConfigurationId: lateRate.id });
@@ -636,7 +638,7 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       const adjustments = options.lockSources ? await adjustmentsQuery.for("update", { of: payrollAdjustments }) : await adjustmentsQuery;
       inputs.push({
         employeeId, employeeCode, assignmentId: id(assignment.id), branchId,
-        baseSalary: assignment.baseSalary, welfare: assignment.welfareAmount,
+        isSocialSecurityMember: assignment.isSocialSecurityMember, baseSalary: assignment.baseSalary, welfare: assignment.welfareAmount,
         standardWorkDays: required[0]!.numericValue, absenceRate: required[1]!.numericValue,
         lateRate: required[2]!.numericValue, socialSecurityRate: required[3]!.numericValue,
         socialSecurityCap: required[4]!.numericValue,

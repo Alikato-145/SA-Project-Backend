@@ -139,3 +139,18 @@ describe("payroll calculator", () => {
     expect(payrollRecordTotalsReconcile({ ...record, netPay: "0.00" })).toBe(false);
   });
 });
+
+test("membership counts only covered daily base earnings and freezes last assignment membership", () => {
+  const input = fixture();
+  input.isSocialSecurityMember = false;
+  input.workDays = input.workDays.map((day, index) => ({ ...day, isSocialSecurityMember: index < 2 }));
+  const result = calculatePayroll(input);
+  expect(result.socialSecurityBaseSnapshot).toBe("2000.00");
+  expect(result.isSocialSecurityMemberSnapshot).toBe(false);
+  expect(result.items.find(item => item.itemType === "social_security")?.amount).toBe("100.00");
+  input.workDays = input.workDays.map(day => ({ ...day, isSocialSecurityMember: false }));
+  const nonmember = calculatePayroll(input);
+  expect(nonmember.socialSecurityBaseSnapshot).toBe("0.00");
+  expect(nonmember.items.some(item => item.itemType === "social_security")).toBe(false);
+  expect(calculatePayroll(fixture()).socialSecurityBaseSnapshot).toBe("4000.00");
+});

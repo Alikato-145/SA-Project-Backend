@@ -1,6 +1,7 @@
 // Defines PostgreSQL persistence for payroll configuration, periods, and results.
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   foreignKey,
@@ -138,6 +139,8 @@ export const payrollRecords = pgTable(
     status: payrollRecordStatusEnum("status")
       .notNull()
       .default("draft"),
+    isSocialSecurityMemberSnapshot: boolean("is_social_security_member_snapshot").notNull().default(true),
+    socialSecurityBaseSnapshot: numeric("social_security_base_snapshot", { precision: 12, scale: 2 }),
     baseSalarySnapshot: numeric("base_salary_snapshot", {
       precision: 12,
       scale: 2,
@@ -189,6 +192,7 @@ export const payrollRecords = pgTable(
       "chk_payroll_base_salary",
       sql`${table.baseSalarySnapshot} >= 0`,
     ),
+    check("chk_payroll_social_security_base", sql`${table.socialSecurityBaseSnapshot} is null or ${table.socialSecurityBaseSnapshot} >= 0`),
     check("chk_payroll_welfare", sql`${table.welfareSnapshot} >= 0`),
     check("chk_total_earnings", sql`${table.totalEarnings} >= 0`),
     check("chk_total_deductions", sql`${table.totalDeductions} >= 0`),

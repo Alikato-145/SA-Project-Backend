@@ -71,6 +71,8 @@ export interface PayrollRecordResponseDto {
   employee_id: string;
   employment_assignment_id: string;
   branch_id: string;
+  is_social_security_member_snapshot: boolean;
+  social_security_base_snapshot: string | null;
   base_salary_snapshot: string;
   welfare_snapshot: string;
   total_earnings: string;

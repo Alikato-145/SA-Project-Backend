@@ -15,6 +15,8 @@ import {
 } from "./a3-transport-audit.plugin";
 
 const routeSamples = [
+  ["GET", "/api/v1/employees/11/payment-destination", "employee.payment_destination.read", "employees", "11"],
+  ["PUT", "/api/v1/employees/11/payment-destination", "employee.payment_destination.update", "employees", "11"],
   [
     "GET",
     "/api/v1/employees",
@@ -138,11 +140,11 @@ const createObserver = (events: AuditEvent[]) => {
 };
 
 describe("A3 employee transport audit", () => {
-  test("registers exactly 16 distinct public actions with safe targets", () => {
-    expect(A3_ACTION_REGISTRY).toHaveLength(16);
+  test("registers exactly 18 distinct public actions with safe targets", () => {
+    expect(A3_ACTION_REGISTRY).toHaveLength(18);
     expect(
       new Set(A3_ACTION_REGISTRY.map(({ actionBase }) => actionBase)).size,
-    ).toBe(16);
+    ).toBe(18);
 
     for (const [
       method,
@@ -185,7 +187,7 @@ describe("A3 employee transport audit", () => {
       });
     }
 
-    expect(events).toHaveLength(16);
+    expect(events).toHaveLength(18);
     expect(JSON.stringify(events)).not.toContain(secret);
   });
 

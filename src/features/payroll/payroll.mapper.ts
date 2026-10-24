@@ -33,6 +33,7 @@ export const toPayrollPeriodResponseDto = (period: PayrollPeriodRecord): Payroll
 export const toPayrollRecordResponseDto = (record: PayrollCalculatedRecord | PayrollRecordDetail): PayrollRecordResponseDto => ({
   ...(recordHasIdentity(record) ? { id: record.id, payroll_period_id: record.periodId, status: record.status } : {}),
   employee_id: record.employeeId, employment_assignment_id: record.assignmentId, branch_id: record.branchId,
+  is_social_security_member_snapshot: record.isSocialSecurityMemberSnapshot ?? true, social_security_base_snapshot: record.socialSecurityBaseSnapshot ?? null,
   base_salary_snapshot: record.baseSalarySnapshot, welfare_snapshot: record.welfareSnapshot,
   total_earnings: record.totalEarnings, total_deductions: record.totalDeductions, net_pay: record.netPay,
   items: record.items.map((item) => ({

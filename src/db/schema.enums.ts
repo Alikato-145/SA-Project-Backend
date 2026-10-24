@@ -1,6 +1,8 @@
 // Named PostgreSQL enum types shared by feature-owned schemas.
 import { pgEnum } from "drizzle-orm/pg-core";
 
+export const paymentMethodEnum = pgEnum("payment_method", ["cash", "transfer"]);
+
 export const roleScopeValues = ["self", "department", "branch", "all"] as const;
 export const employeeStatusValues = ["active", "inactive", "suspended", "terminated"] as const;
 export const accountStatusValues = ["active", "locked", "disabled"] as const;

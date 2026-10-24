@@ -30,6 +30,8 @@ import {
 import type { AuditEvent, AuditReceipt } from "./audit.repository";
 
 const cases = [
+  ["GET", "/api/v1/employees/9/payment-destination", "employee.payment_destination.read"],
+  ["PUT", "/api/v1/employees/9/payment-destination", "employee.payment_destination.update"],
   ["POST", "/api/v1/auth/login", "authentication.session.login"],
   ["POST", "/api/v1/auth/logout", "authentication.session.logout"],
   ["GET", "/api/v1/auth/me", "authentication.session.view"],

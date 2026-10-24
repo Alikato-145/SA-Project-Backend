@@ -11,6 +11,8 @@ import type { AuditEvent, AuditReceipt } from "../audit/audit.repository";
 import { createA3EmployeeRoutes } from "./employee.routes";
 
 const actionCases = [
+  ["GET", "/api/v1/employees/1/payment-destination", "employee.payment_destination.read"],
+  ["PUT", "/api/v1/employees/1/payment-destination", "employee.payment_destination.update"],
   ["GET", "/api/v1/employees", "employee.profile.list"],
   ["POST", "/api/v1/employees", "employee.profile.create"],
   ["GET", "/api/v1/employees/1", "employee.profile.read"],
@@ -30,15 +32,15 @@ const actionCases = [
 ] as const;
 
 describe("A3 public action audit matrix", () => {
-  test("registers every one of the 16 public actions exactly once", () => {
-    expect(A3_ACTION_REGISTRY).toHaveLength(16);
+  test("registers every one of the 18 public actions exactly once", () => {
+    expect(A3_ACTION_REGISTRY).toHaveLength(18);
     for (const [method, path, actionBase] of actionCases) {
       const resolved = resolveRegisteredA3Action(new Request("http://localhost" + path, { method }));
       expect(resolved?.registration.actionBase).toBe(actionBase);
     }
   });
 
-  test("exports exactly the same 16 public routes and no hard-delete method", () => {
+  test("exports exactly the same 18 public routes and no hard-delete method", () => {
     const app = createA3EmployeeRoutes({
       actions: {} as never,
       service: {} as never,
@@ -60,7 +62,7 @@ describe("A3 public action audit matrix", () => {
         .replace("/1", "/:employee_id");
       return method + " " + parameterized;
     });
-    expect(routes).toHaveLength(16);
+    expect(routes).toHaveLength(18);
     expect(new Set(routes)).toEqual(new Set(expected));
     expect(routes.some((route) => route.startsWith("DELETE "))).toBe(false);
   });

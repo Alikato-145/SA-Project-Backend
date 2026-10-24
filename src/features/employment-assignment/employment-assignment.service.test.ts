@@ -37,3 +37,13 @@ test("manager termination checks current branch and preserves salary history",as
  await service.endAssignmentsForTermination({} as never,{actor:manager,requestId:"end",employeeId:"1",date:today,reason:"left"});
  expect(rows[0]!.effectiveTo).toBe(today);expect(rows[0]!.baseSalary).toBe("15000.00");
 });
+
+test("membership successor retains the original row and defaults old commands to member", async () => {
+  const { service, rows, events } = setup();
+  await service.createAssignment({ actor: owner, requestId: "member-start", employeeId: "1", ...input });
+  expect(rows[0]?.isSocialSecurityMember).toBe(true);
+  await service.createAssignment({ actor: owner, requestId: "member-end", employeeId: "1", ...input, effectiveFrom: "2026-02-01", isSocialSecurityMember: false });
+  expect(rows[0]).toMatchObject({ isSocialSecurityMember: true, effectiveTo: "2026-01-31" });
+  expect(rows[1]).toMatchObject({ isSocialSecurityMember: false, effectiveFrom: "2026-02-01", effectiveTo: null });
+  expect(JSON.stringify(events)).toContain('"is_social_security_member":false');
+});

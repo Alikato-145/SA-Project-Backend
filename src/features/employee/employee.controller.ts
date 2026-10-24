@@ -1,11 +1,17 @@
 import type { AuthenticatedActor } from "../../core/auth/auth.types";
-import type { EmployeeCreateBodyDto, EmployeeListQueryDto, EmployeeOnboardingBodyDto, EmployeeStatusBodyDto, EmployeeUpdateBodyDto } from "./employee.dto";
+import type { EmployeePaymentDestinationBodyDto, EmployeeCreateBodyDto, EmployeeListQueryDto, EmployeeOnboardingBodyDto, EmployeeStatusBodyDto, EmployeeUpdateBodyDto } from "./employee.dto";
 import { parseEmployeeCreate, parseEmployeeListFilters, parseEmployeeOnboarding, parseEmployeeStatus, parseEmployeeUpdate } from "./employee.dto";
-import { toEmployeeOnboardingResponseDto, toEmployeeResponseDto } from "./employee.mapper";
+import { toPaymentDestinationDto, toEmployeeOnboardingResponseDto, toEmployeeResponseDto } from "./employee.mapper";
 import type { EmployeeService } from "./employee.service";
 import { parseEmployeeId } from "./employee.validation";
 
 export const createEmployeeController = (service: EmployeeService) => ({
+  async paymentDestination(input: { actor: AuthenticatedActor; requestId: string; employeeId: string }) {
+    return { data: toPaymentDestinationDto(await service.getPaymentDestination(input)), request_id: input.requestId };
+  },
+  async updatePaymentDestination(input: { actor: AuthenticatedActor; requestId: string; employeeId: string; body: EmployeePaymentDestinationBodyDto }) {
+    return { data: toPaymentDestinationDto(await service.updatePaymentDestination({ actor: input.actor, requestId: input.requestId, employeeId: input.employeeId, paymentMethod: input.body.payment_method, promptpayPhone: input.body.promptpay_phone })), request_id: input.requestId };
+  },
   async list(input: { actor: AuthenticatedActor; requestId: string; query: EmployeeListQueryDto }) {
     const page = await service.listEmployees({
       actor: input.actor, requestId: input.requestId, ...parseEmployeeListFilters(input.query),

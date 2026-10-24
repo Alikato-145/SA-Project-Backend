@@ -23,6 +23,7 @@ const line = (item: PayrollSourceItem): PayrollSourceItem => {
 
 export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalculatedRecord => {
   const items: PayrollSourceItem[] = [];
+  let earnedBase = 0n;
   for (const evidence of input.configurationEvidence ?? []) items.push(line({
     itemType: "other", direction: "earning", description: `Configuration ${evidence.key}`,
     quantity: null, rate: evidence.value, amount: "0.00", payrollConfigurationId: evidence.id,
@@ -38,6 +39,7 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
     // Actual work on a holiday is recorded as present/late; OT still requires approval.
     if (day.status === "weekly_holiday" || day.status === "public_holiday") continue;
     const base = dailyBase(day.baseSalary ?? input.baseSalary, day.standardWorkDays ?? input.standardWorkDays);
+    if (day.isSocialSecurityMember ?? input.isSocialSecurityMember ?? true) earnedBase += base;
     const welfare = dailyBase(day.welfare ?? input.welfare, day.standardWorkDays ?? input.standardWorkDays);
     const dayAssignmentId = day.assignmentId ?? input.assignmentId;
     items.push(line({ itemType: "base_salary", direction: "earning", description: "Daily base salary",
@@ -81,8 +83,6 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
       payrollConfigurationId: overtime.configurationId, sourceTable: "overtime_records", sourceId: overtime.id, occurredOn: overtime.date }));
   }
 
-  const earnedBase = items.filter((item) => item.itemType === "base_salary")
-    .reduce((sum, item) => sum + money(item.amount), 0n);
   const socialBase = fixedRateAmount(earnedBase, input.socialSecurityRate);
   const social = socialBase < money(input.socialSecurityCap) ? socialBase : money(input.socialSecurityCap);
   if (social > 0n) items.push(line({ itemType: "social_security", direction: "deduction", description: "Social security",
@@ -105,6 +105,7 @@ export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalcula
   const deductions = items.filter((item) => item.direction === "deduction").reduce((sum, item) => sum + money(item.amount), 0n);
   return {
     employeeId: input.employeeId, assignmentId: input.assignmentId, branchId: input.branchId,
+    isSocialSecurityMemberSnapshot: input.isSocialSecurityMember ?? true, socialSecurityBaseSnapshot: formatMoney(earnedBase),
     baseSalarySnapshot: formatMoney(money(input.baseSalary)), welfareSnapshot: formatMoney(money(input.welfare)),
     totalEarnings: formatMoney(earnings), totalDeductions: formatMoney(deductions), netPay: formatMoney(earnings - deductions), items,
   };

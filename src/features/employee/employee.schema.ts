@@ -8,7 +8,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { id, timestamps } from "../../db/schema.columns";
-import { employeeStatusEnum } from "../../db/schema.enums";
+import { employeeStatusEnum, paymentMethodEnum } from "../../db/schema.enums";
 
 export const employees = pgTable(
   "employees",
@@ -19,6 +19,8 @@ export const employees = pgTable(
     passportId: varchar("passport_id", { length: 30 }).unique(),
     firstName: varchar("first_name", { length: 100 }).notNull(),
     lastName: varchar("last_name", { length: 100 }).notNull(),
+    paymentMethod: paymentMethodEnum("payment_method").notNull().default("cash"),
+    promptpayPhone: varchar("promptpay_phone", { length: 10 }),
     phone: varchar("phone", { length: 30 }),
     personalEmail: varchar("personal_email", { length: 255 }),
     address: text("address"),
@@ -30,6 +32,7 @@ export const employees = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("chk_employee_promptpay_phone", sql`${table.promptpayPhone} is null or ${table.promptpayPhone} ~ '^0[689][0-9]{8}$'`),
     check(
       "chk_employee_identity",
       sql`${table.nationalId} is not null or ${table.passportId} is not null`,
