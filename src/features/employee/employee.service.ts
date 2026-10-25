@@ -6,6 +6,7 @@ import { createActionContext } from "../../core/audit/action-context";
 import type { ActionObserver } from "../../core/audit/action-observer";
 import type { DomainAuditObserver } from "../../core/audit/domain-audit-observer";
 import type { AuthenticatedActor } from "../../core/auth/auth.types";
+import { parseActiveGrant } from "../../core/auth/authorization";
 import type { DatabaseExecutor, TransactionRunner } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
 import type { EmployeeCreateCommand, EmployeeListFilters, EmployeeStatus, EmployeeUpdateCommand } from "./employee.dto";
@@ -78,7 +79,7 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
       const id = String(parseEmployeeId(command.employeeId, "employee_id"));
       const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.payment_destination.read", target: { tableName: "employees", recordId: id } });
       return dependencies.actions.observeRead(context, async () => {
-        if (!canAdministerEmployees(command.actor) && command.actor.employeeId !== id) throw new ApplicationError("FORBIDDEN_SCOPE");
+        if (!canAdministerEmployees(command.actor) && !(command.actor.employeeId === id && command.actor.grants.some(grant => parseActiveGrant(grant) !== null))) throw new ApplicationError("FORBIDDEN_SCOPE");
         const destination = await paymentRepository.findPaymentDestination(dependencies.rootExecutor, id);
         if (!destination) throw new ApplicationError("RESOURCE_NOT_FOUND");
         return destination;

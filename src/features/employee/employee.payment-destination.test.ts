@@ -11,7 +11,53 @@ import { ActionObserver } from "../../core/audit/action-observer";
 import { DomainAuditObserver } from "../../core/audit/domain-audit-observer";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { createEmployeeService } from "./employee.service";
-import { employeeTestActor } from "./employee.test-support";
+import { createEmployeeReadTestApp, employeeTestActor } from "./employee.test-support";
+import type { AuthenticatedActor } from "../../core/auth/auth.types";
+
+test.each(["service", "route"])("%s destination requires current valid grants before lookup, including after last grant revocation", async (boundary) => {
+  let reads = 0;
+  const executor = {} as DatabaseExecutor;
+  const actions = new ActionObserver(executor, { async insert(_executor, event) { return { id: 1, action: event.action, requestId: event.requestId }; } });
+  const service = createEmployeeService({ rootExecutor: executor, payroll: { async serialize() {} }, actions,
+    paymentRepository: { async findPaymentDestination() { reads++; return { paymentMethod: "transfer", promptpayPhone: "0812345678" }; }, async updatePaymentDestination() { throw new Error("read only"); } },
+  });
+  let current: AuthenticatedActor = employeeTestActor("EMPLOYEE");
+  const app = createEmployeeReadTestApp({ service, actions, authenticate: async () => current });
+  const get = () => app.handle(new Request("http://localhost/api/v1/employees/1/payment-destination"));
+  for (const role of ["EMPLOYEE", "SUPERVISOR", "BRANCH_MANAGER", "HR", "OWNER"] as const) {
+    current = { ...employeeTestActor(role), employeeId: role === "HR" || role === "OWNER" ? null : "1" };
+    expect((await get()).status).toBe(200);
+  }
+  const valid = employeeTestActor("EMPLOYEE");
+  const denied = [
+    { ...valid, grants: [] },
+    { ...valid, grants: [{ ...valid.grants[0]!, roleActive: false }] },
+    { ...valid, grants: [{ ...valid.grants[0]!, branchId: "10" }] },
+    { ...valid, grants: [{ ...valid.grants[0]!, scope: "branch" }] },
+    { ...employeeTestActor("SUPERVISOR"), employeeId: "1", grants: [{ ...employeeTestActor("SUPERVISOR").grants[0]!, departmentId: null }] },
+  ] as unknown as AuthenticatedActor[];
+  for (const actor of denied) {
+    current = actor;
+    const before = reads;
+    if (boundary === "service") {
+      await expect(service.getPaymentDestination({ actor, employeeId: "1", requestId: "invalid-grant" })).rejects.toMatchObject({ code: "FORBIDDEN_SCOPE" });
+    } else {
+      const response = await get();
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ error: { code: "FORBIDDEN_SCOPE" } });
+    }
+    expect(reads).toBe(before);
+  }
+  current = valid;
+  expect((await get()).status).toBe(200);
+  current = { ...valid, grants: [] }; // Same authenticated account, final grant removed.
+  const before = reads;
+  expect((await get()).status).toBe(403);
+  expect(reads).toBe(before);
+  current = { ...valid, employeeId: "2" };
+  expect((await get()).status).toBe(403);
+  expect(reads).toBe(before);
+});
 
 test("destination has separate contact state; only HR/OWNER writes and self reads", async () => {
   const executor = {} as DatabaseExecutor;
