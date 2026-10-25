@@ -1,4 +1,4 @@
-import type { ApprovedLeaveInput, LeaveActor, LeaveRequest, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
+import type { ApprovedLeaveInput, LeaveActor, LeaveRequest, LeaveType, SubmitLeaveCommand, UpdateLeaveCommand } from "./leave.dto";
 import { LeaveError, type LeaveRepository, type LeaveSession } from "./leave.repository";
 import { ApplicationError } from "../../core/errors/application.error";
 
@@ -49,6 +49,7 @@ export class LeaveService {
       }
       const type = await session.findType(command.leaveTypeId);
       if (!type?.isActive) throw new LeaveError("LEAVE_TYPE_UNAVAILABLE");
+      await this.assertQuotaAvailable(session, command.employeeId, type, dates);
       const request = await session.insertRequest(command, dates.length, actor.accountId);
       await session.insertDays(request.id, type.id, dates, type.isDeductible);
       await session.appendAction(request.id, actor.accountId, "submitted");
@@ -70,6 +71,7 @@ export class LeaveService {
       }
       const type = await session.findType(command.leaveTypeId);
       if (!type?.isActive) throw new LeaveError("LEAVE_TYPE_UNAVAILABLE");
+      await this.assertQuotaAvailable(session, request.employeeId, type, dates);
       const updated = await session.updatePendingRequest(id, command, dates.length);
       await session.replaceDays(id, type.id, dates, type.isDeductible);
       await session.appendAction(
@@ -175,6 +177,28 @@ export class LeaveService {
 
   async listLeaveTypes(_actor: LeaveActor) {
     return this.repository.listActiveTypes();
+  }
+
+  private async assertQuotaAvailable(session: LeaveSession, employeeId: number, type: LeaveType, dates: string[]) {
+    if (type.quotaType === "none") return;
+    const daysByYear = new Map<number, number>();
+    for (const date of dates) {
+      const year = Number(date.slice(0, 4));
+      daysByYear.set(year, (daysByYear.get(year) ?? 0) + 1);
+    }
+    // Quotas are numeric(8, 2); compare exact hundredths rather than fractional days.
+    const hundredths = (value: string) => {
+      const [whole, fraction = ""] = value.split(".");
+      return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+    };
+    for (const [year, requestedDays] of daysByYear) {
+      const quota = await session.findQuota(employeeId, type.id, year);
+      if (!quota) throw new LeaveError("LEAVE_QUOTA_EXCEEDED");
+      if (quota.frozenAt) throw new LeaveError("LEAVE_QUOTA_FROZEN");
+      if (!type.allowExceed && hundredths(quota.usedDays) + requestedDays * 100 > hundredths(quota.entitledDays)) {
+        throw new LeaveError("LEAVE_QUOTA_EXCEEDED");
+      }
+    }
   }
 
   private async requirePending(session: LeaveSession, id: number) {

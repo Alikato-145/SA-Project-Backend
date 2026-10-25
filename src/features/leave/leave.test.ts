@@ -64,6 +64,56 @@ const make = (overrides: Partial<LeaveSession> = {}) => {
   return { service, session, access, calls };
 };
 
+describe("leave quota before submit/edit", () => {
+  const command = { employeeId: 11, leaveTypeId: 7, startDate: "2026-09-01", endDate: "2026-09-03" };
+  const quota = { id: 4, employeeId: 11, leaveTypeId: 7, quotaYear: 2026, entitledDays: "3.00", usedDays: "0.00", frozenAt: null };
+  for (const operation of ["submit", "edit"] as const) {
+    for (const [label, row, code] of [
+      ["missing", undefined, "LEAVE_QUOTA_EXCEEDED"],
+      ["insufficient fractional balance", { ...quota, entitledDays: "3.29", usedDays: "0.30" }, "LEAVE_QUOTA_EXCEEDED"],
+      ["exhausted", { ...quota, usedDays: "3.00" }, "LEAVE_QUOTA_EXCEEDED"],
+      ["frozen", { ...quota, frozenAt: new Date() }, "LEAVE_QUOTA_FROZEN"],
+    ] as const) {
+      test(`${operation} rejects ${label} quota before request/day/action writes`, async () => {
+        const fixture = make({ findQuota: async () => row });
+        const result = operation === "submit" ? fixture.service.submitLeave(employee, command) : fixture.service.updateLeave(employee, 20, command);
+        await expect(result).rejects.toMatchObject({ code });
+        expect(fixture.calls).toEqual(["lock"]);
+      });
+    }
+    test(`${operation} validates each year separately without consuming quota`, async () => {
+      const years: number[] = [];
+      const fixture = make({ findQuota: async (_employeeId, _typeId, year) => {
+        years.push(year);
+        return { ...quota, quotaYear: year, entitledDays: year === 2026 ? "1" : "0" };
+      } });
+      const crossYear = { ...command, startDate: "2026-12-31", endDate: "2027-01-01" };
+      await expect(operation === "submit" ? fixture.service.submitLeave(employee, crossYear) : fixture.service.updateLeave(employee, 20, crossYear)).rejects.toMatchObject({ code: "LEAVE_QUOTA_EXCEEDED" });
+      expect(years).toEqual([2026, 2027]);
+      expect(fixture.calls).toEqual(["lock"]);
+    });
+  }
+  test("accepts exact fractional balance without consuming or reserving entitlement", async () => {
+    const fixture = make({ findQuota: async () => ({ ...quota, entitledDays: "3.30", usedDays: "0.30" }) });
+    await fixture.service.submitLeave(employee, command);
+    expect(fixture.calls).toEqual(["lock", "insert", "days", "submitted"]);
+  });
+  test("no-quota types skip quota rows; explicit allowExceed permits exhausted existing unfrozen quota", async () => {
+    const noQuota = make({ findType: async () => ({ ...type, quotaType: "none" }), findQuota: async () => { throw new Error("No quota needed"); } });
+    await noQuota.service.submitLeave(employee, command);
+    const excess = make({ findType: async () => ({ ...type, allowExceed: true }), findQuota: async () => ({ ...quota, usedDays: "3.00" }) });
+    await excess.service.updateLeave(employee, 20, command);
+    expect(excess.calls).toEqual(["lock", "update", "replace-days", "overridden"]);
+  });
+  test("allowExceed still requires an existing unfrozen quota", async () => {
+    for (const [row, code] of [[undefined, "LEAVE_QUOTA_EXCEEDED"], [{ ...quota, frozenAt: new Date() }, "LEAVE_QUOTA_FROZEN"]] as const) {
+      const fixture = make({ findType: async () => ({ ...type, allowExceed: true }), findQuota: async () => row });
+      await expect(fixture.service.submitLeave(employee, command)).rejects.toMatchObject({ code });
+      expect(fixture.calls).toEqual(["lock"]);
+    }
+  });
+});
+
 describe("leave decisions", () => {
   test("requires evidence before approval and retains the approval remark", async () => {
     const fixture = make({ findType: async () => ({ ...type, requiresDocument: true }) });
