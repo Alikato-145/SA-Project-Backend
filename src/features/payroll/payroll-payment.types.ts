@@ -18,10 +18,31 @@ export interface PaymentRecord {
   member: boolean;
   amount: string;
   payment: Payment | null;
+  paymentHistory?: Payment[];
 }
 export type PaymentGroup = "social_security" | "cash" | "transfer";
 export interface PaymentGroupRow extends PaymentRecord {
   group: PaymentGroup;
   paymentMethod: "cash" | "transfer";
   missingDestination: string | null;
+}
+
+export interface PaymentLifecycleCommand {
+  actor: AuthenticatedActor;
+  requestId: string;
+  paymentId: string;
+}
+export interface PaymentSummaryCounts {
+  employeeCount: number;
+  payableCount: number;
+  paidCount: number;
+  outstandingCount: number;
+  totalPayable: string;
+  totalPaid: string;
+  totalOutstanding: string;
+  complete: boolean;
+}
+export interface PaymentSummary {
+  branches: (PaymentSummaryCounts & { branchId: number; branchName: string })[];
+  totals: PaymentSummaryCounts;
 }

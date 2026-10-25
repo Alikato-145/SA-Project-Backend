@@ -9,7 +9,7 @@ import { assertPayrollMutationAccess } from "./payroll.authorization";
 import { serializePayrollInputs } from "./payroll.input-lock.repository";
 import { promptpayPayload } from "./payroll-payment.promptpay";
 import type { PayrollPaymentRepository } from "./payroll-payment.repository";
-import type { NewPayment, PaymentCommand, PaymentGroupRow } from "./payroll-payment.types";
+import type { NewPayment, PaymentCommand, PaymentGroupRow, PaymentLifecycleCommand, PaymentSummary, PaymentSummaryCounts } from "./payroll-payment.types";
 interface DestinationCommand {
   actor: AuthenticatedActor;
   requestId: string;
@@ -70,8 +70,59 @@ export const createPayrollPaymentService = (d: PayrollPaymentDependencies) => {
       return load(e, c);
     }));
   };
+  const transition = async (c: PaymentLifecycleCommand, status: "paid" | "cancelled", detail: string | null) => {
+    const action = status === "paid" ? "payroll.payment.confirm" : "payroll.payment.cancel";
+    // Attempt logging is separate from the single transactional domain transition event.
+    return d.actions.observeRead(context(c, `${action}_attempt`, c.paymentId), () => d.transactionRunner.transaction(async e => {
+      await serializePayrollInputs(e);
+      const payment = await d.repository.findIncludingHistory(e, c.paymentId);
+      if (!payment) throw new ApplicationError("RESOURCE_NOT_FOUND");
+      if (payment.status === status && (status === "paid" ? payment.referenceNo : payment.cancellationReason) === detail) return payment;
+      if (payment.status !== "prepared") throw new ApplicationError("PAYMENT_STATE_CONFLICT");
+      const changed = await d.repository.transition(e, c.paymentId, status === "paid"
+        ? { status, paidAt: new Date(), paidByUserAccountId: Number(c.actor.accountId), referenceNo: detail }
+        : { status, cancelledAt: new Date(), cancelledByUserAccountId: Number(c.actor.accountId), cancellationReason: detail });
+      if (!changed) throw new ApplicationError("PAYMENT_STATE_CONFLICT");
+      await d.domain.record(e, context(c, action, c.paymentId), { oldData: { status: "prepared" }, newData: { status, payroll_record_id: String(payment.payrollRecordId), ...(status === "paid" ? { reference_no: detail } : { cancellation_reason: detail }) } });
+      return changed;
+    }));
+  };
   return {
     listPaymentGroups,
+    async confirmPayrollPayment(c: PaymentLifecycleCommand & { referenceNo?: string }) {
+      assertPayrollMutationAccess(c.actor);
+      const reference = c.referenceNo?.trim() || null;
+      if (reference && reference.length > 200) throw new ApplicationError("VALIDATION_ERROR");
+      return transition(c, "paid", reference);
+    },
+    async cancelPreparedPayrollPayment(c: PaymentLifecycleCommand & { reason: string }) {
+      assertPayrollMutationAccess(c.actor);
+      const reason = c.reason.trim();
+      if (!reason || reason.length > 1000) throw new ApplicationError("VALIDATION_ERROR");
+      return transition(c, "cancelled", reason);
+    },
+    async getPaymentSummary(c: PaymentCommand): Promise<PaymentSummary> {
+      assertPayrollMutationAccess(c.actor);
+      return d.actions.observeRead(context(c, "payroll.payment.summary", c.periodId), () => d.transactionRunner.transaction(async e => {
+        await serializePayrollInputs(e);
+        const period = await d.repository.period(e, c.periodId);
+        if (!period) throw new ApplicationError("RESOURCE_NOT_FOUND");
+        if (period.status !== "locked") throw new ApplicationError("PAYMENT_PERIOD_NOT_LOCKED");
+        const rows = await d.repository.records(e, c.periodId, c.branchId);
+        const counts = (records: typeof rows): PaymentSummaryCounts => {
+          let payable = 0n, paid = 0n, payableCount = 0, paidCount = 0;
+          for (const r of records) {
+            const amount = BigInt(r.amount.replace(".", ""));
+            if (amount > 0n) { payable += amount; payableCount++; }
+            if (amount > 0n && r.payment?.status === "paid") { paid += BigInt(r.payment.amount.replace(".", "")); paidCount++; }
+          }
+          const money = (n: bigint) => `${n / 100n}.${String(n % 100n).padStart(2, "0")}`;
+          return { employeeCount: records.length, payableCount, paidCount, outstandingCount: payableCount - paidCount, totalPayable: money(payable), totalPaid: money(paid), totalOutstanding: money(payable - paid), complete: payableCount === paidCount };
+        };
+        const branchIds = [...new Set(rows.map(r => r.payment?.branchIdSnapshot ?? r.branchId))];
+        return { branches: branchIds.map(branchId => { const records = rows.filter(r => (r.payment?.branchIdSnapshot ?? r.branchId) === branchId); return { branchId, branchName: records[0]!.branchName, ...counts(records) }; }), totals: counts(rows) };
+      }));
+    },
     async preparePayrollPayments(c: PaymentCommand) {
       assertPayrollMutationAccess(c.actor);
       const ctx = context(c, "payroll.payment.prepare", c.periodId);
