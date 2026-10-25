@@ -5,9 +5,10 @@ import { createActionContext } from "../../core/audit/action-context";
 import { assertPayrollMutationAccess } from "../payroll/payroll.authorization";
 import type { BankAccountCipher } from "../employee-bank-account/employee-bank-account.crypto";
 import { reportRepository } from "./report.repository";
-import type { ReportFilters,ReportKind } from "./report.types";
+import type { ReportFilters,ReportKind,SalaryPayable,SalaryPayableRow } from "./report.types";
 import { ApplicationError } from "../../core/errors/application.error";
 import { parsePayrollId } from "../payroll/payroll.validation";
+import { money,formatMoney } from "../payroll/calculation/decimal";
 import { csv } from "./report.csv";
 
 const authorize = (actor: AuthenticatedActor) => assertPayrollMutationAccess(actor);
@@ -27,6 +28,11 @@ export const createReportService = (dependencies: { rootExecutor: DatabaseExecut
       if(!branch || branch.shopId!==period.shopId)throw new ApplicationError("INVALID_ORGANIZATION_RELATION");
     }
     return {period,filters:{...filters,branchId}};
+  };
+  const readLockedPeriod=async(actor:AuthenticatedActor,periodId:string,filters:ReportFilters)=>{
+    const loaded=await readPeriod(actor,periodId,filters);
+    if(loaded.period.status!=="locked")throw new ApplicationError("STATE_CONFLICT",{publicMessage:"ต้องล็อกรอบเงินเดือนก่อนส่งออก"});
+    return loaded;
   };
   const readSummary=async(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={},action="read")=>{
     const context=createActionContext({actor,requestId,actionBase:`report.summary.${action}`,target:{tableName:"payroll_periods",recordId:periodId}});
@@ -48,32 +54,43 @@ export const createReportService = (dependencies: { rootExecutor: DatabaseExecut
       return {rows:rows.slice((page-1)*pageSize,page*pageSize),total:rows.length,page,pageSize};
     });
   },
-  async bankTransfer(actor: AuthenticatedActor, periodId: string, requestId: string) {
-    const context = createActionContext({ actor, requestId, actionBase: "report.bank-transfer.export", target: { tableName: "payroll_records", recordId: periodId } });
-    return dependencies.actions.observeRead(context, async () => {
-      authorize(actor);
-      parsePayrollId(periodId,"period_id");
-      const period=await reportRepository.findPeriod(dependencies.rootExecutor,periodId);
-      if(!period)throw new ApplicationError("PAYROLL_PERIOD_NOT_FOUND");
-      if(period.status!=="locked")throw new ApplicationError("STATE_CONFLICT",{publicMessage:"ต้องล็อกรอบเงินเดือนก่อนส่งออก"});
-      const rows = await reportRepository.lockedRows(dependencies.rootExecutor, periodId);
-      if(rows.some(row=>!row.accountCiphertext||!row.bankCode||!row.accountHolder))throw new ApplicationError("VALIDATION_ERROR",{publicMessage:"มีพนักงานที่ไม่มีบัญชีธนาคารหลักครบถ้วน ให้แก้ข้อมูลก่อนส่งออกเพื่อไม่ให้ตกหล่น"});
-      const body = await Promise.all(rows.map(async (row) => [row.bankCode!, await dependencies.cipher.decrypt(row.accountCiphertext!), row.accountHolder!, row.netPay]));
-      return csv([["bank_code", "account_number", "account_holder", "net_pay"], ...body]);
+  async salaryPayable(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}):Promise<SalaryPayable> {
+    const context=createActionContext({actor,requestId,actionBase:"report.salary-payable.read",target:{tableName:"payroll_periods",recordId:periodId}});
+    return dependencies.actions.observeRead(context,async()=>{
+      const loaded=await readLockedPeriod(actor,periodId,filters);
+      const rows=await reportRepository.lockedRows(dependencies.rootExecutor,periodId,loaded.filters);
+      const safeRows:SalaryPayableRow[]=rows.map(row=>({recordId:row.recordId,employeeId:row.employeeId,employeeCode:row.employeeCode,employeeName:`${row.employeeName} ${row.employeeLastName}`,earnings:row.totalEarnings,deductions:row.totalDeductions,net:row.netPay,paid:row.paymentStatus==="paid"?row.netPay:"0.00",outstanding:row.paymentStatus==="paid"?"0.00":row.netPay,status:money(row.netPay)===0n?"zero":row.paymentStatus==="paid"?"paid":row.paymentStatus==="prepared"?"prepared":"unprepared"}));
+      const totals=(values:SalaryPayableRow[]):SalaryPayable["totals"]=>{
+        const sum=(key:"earnings"|"deductions"|"net"|"paid"|"outstanding")=>formatMoney(values.reduce((total,row)=>total+money(row[key]),0n));
+        return {employeeCount:values.length,payableCount:values.filter(r=>money(r.net)>0n).length,earnings:sum("earnings"),deductions:sum("deductions"),net:sum("net"),paid:sum("paid"),outstanding:sum("outstanding")};
+      };
+      const branchIds=[...new Set(rows.map(row=>row.branchId))];
+      return {period:{id:loaded.period.id,startDate:loaded.period.startDate,endDate:loaded.period.endDate},filters:loaded.filters,branches:branchIds.map(branchId=>{const selected=safeRows.filter((_,index)=>rows[index]!.branchId===branchId);return{branchId,branchName:rows.find(row=>row.branchId===branchId)!.branchName,rows:selected,totals:totals(selected)};}),totals:totals(safeRows)};
     });
   },
-  async socialSecurity(actor: AuthenticatedActor, periodId: string, requestId: string) {
-    const context = createActionContext({ actor, requestId, actionBase: "report.social-security.export", target: { tableName: "payroll_records", recordId: periodId } });
-    return dependencies.actions.observeRead(context, async () => {
-      authorize(actor);
-      parsePayrollId(periodId,"period_id");
-      const period=await reportRepository.findPeriod(dependencies.rootExecutor,periodId);
-      if(!period)throw new ApplicationError("PAYROLL_PERIOD_NOT_FOUND");
-      if(period.status!=="locked")throw new ApplicationError("STATE_CONFLICT",{publicMessage:"ต้องล็อกรอบเงินเดือนก่อนส่งออก"});
-      const rows = await reportRepository.lockedRows(dependencies.rootExecutor, periodId);
-      return csv([["employee_code", "employee_name", "base_salary", "social_security_deduction"], ...rows.map((row) => [row.employeeCode, `${row.employeeName} ${row.employeeLastName}`, row.baseSalary,row.socialSecurityDeduction])]);
+  async bankTransfer(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}) {
+    const context=createActionContext({actor,requestId,actionBase:"report.bank-transfer.export",target:{tableName:"payroll_periods",recordId:periodId}});
+    return dependencies.actions.observeRead(context,async()=>{
+      const loaded=await readLockedPeriod(actor,periodId,filters);
+      const rows=await reportRepository.lockedRows(dependencies.rootExecutor,periodId,loaded.filters);
+      const outstanding=rows.filter(row=>money(row.netPay)>0n && row.paymentStatus!=="paid");
+      const unprepared=outstanding.filter(row=>!row.paymentStatus);
+      if(unprepared.length)throw new ApplicationError("VALIDATION_ERROR",{publicMessage:`ยังไม่ได้เตรียมจ่าย: ${unprepared.map(r=>r.employeeCode).join(", ")} ให้เตรียมจ่ายเงินเดือนในหน้าเงินเดือนก่อนส่งออก`});
+      const transfers=outstanding.filter(row=>row.paymentMethod==="transfer");
+      const missing=transfers.filter(row=>!row.accountCiphertext||!row.bankCode||!row.accountHolder);
+      if(missing.length)throw new ApplicationError("VALIDATION_ERROR",{publicMessage:`ปลายทางที่เตรียมไว้มีเฉพาะโทรศัพท์ ไม่มีบัญชีธนาคาร: ${missing.map(r=>r.employeeCode).join(", ")} ใช้ QR ในหน้าเงินเดือน หรือยกเลิกการเตรียมจ่ายแล้วเพิ่มบัญชีและเตรียมใหม่ก่อนส่งออก CSV`});
+      const body=await Promise.all(transfers.map(async row=>[row.bankCode!,await dependencies.cipher.decrypt(row.accountCiphertext!),row.accountHolder!,row.netPay]));
+      return csv([["bank_code","account_number","account_holder","net_pay"],...body]);
+    });
+  },
+  async socialSecurity(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}) {
+    const context=createActionContext({actor,requestId,actionBase:"report.social-security.export",target:{tableName:"payroll_periods",recordId:periodId}});
+    return dependencies.actions.observeRead(context,async()=>{
+      const loaded=await readLockedPeriod(actor,periodId,filters);
+      const rows=await reportRepository.lockedRows(dependencies.rootExecutor,periodId,loaded.filters);
+      return csv([["employee_code","employee_name","base_salary","social_security_deduction"],...rows.filter(row=>money(row.baseSalary)>0n||money(row.socialSecurityDeduction)>0n).map(row=>[row.employeeCode,`${row.employeeName} ${row.employeeLastName}`,row.baseSalary,row.socialSecurityDeduction])]);
     });
   },
 };
 };
-export type ReportService = ReturnType<typeof createReportService>;
+export type ReportService=ReturnType<typeof createReportService>;

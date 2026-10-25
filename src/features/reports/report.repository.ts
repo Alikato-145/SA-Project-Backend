@@ -3,7 +3,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { payrollPeriods, payrollRecords, payrollItems } from "../payroll/payroll.schema";
 import { employees } from "../employee/employee.schema";
-import { employeeBankAccounts } from "../employee-bank-account/employee-bank-account.schema";
+import { payrollPayments } from "../payroll/payroll-payment.schema";
 import { employmentAssignments } from "../employment-assignment/employment-assignment.schema";
 import { branches } from "../branch/branch.schema";
 import { workDayRecords } from "../attendance/attendance.schema";
@@ -39,7 +39,24 @@ export const reportRepository = {
     ]);
     return {period,attendance,leave,overtime,debt,payroll};
   },
-  async lockedRows(executor: DatabaseExecutor, periodId: string) {
-    return executor.select({ employeeCode: employees.employeeCode, employeeName: employees.firstName, employeeLastName: employees.lastName, baseSalary: payrollRecords.baseSalarySnapshot, netPay: payrollRecords.netPay, socialSecurityDeduction:sql<string>`coalesce((select sum(${payrollItems.amount}) from ${payrollItems} where ${payrollItems.payrollRecordId} = ${payrollRecords.id} and ${payrollItems.itemType} = 'social_security'),0)::text`, accountHolder: employeeBankAccounts.accountHolderName, accountCiphertext: employeeBankAccounts.accountNumberCiphertext, bankCode: employeeBankAccounts.bankCode }).from(payrollRecords).innerJoin(payrollPeriods, eq(payrollPeriods.id, payrollRecords.payrollPeriodId)).innerJoin(employees, eq(employees.id, payrollRecords.employeeId)).leftJoin(employeeBankAccounts, and(eq(employeeBankAccounts.employeeId, payrollRecords.employeeId), eq(employeeBankAccounts.isActive, true), eq(employeeBankAccounts.isPrimary, true))).where(and(eq(payrollRecords.payrollPeriodId, id(periodId)), eq(payrollRecords.status, "locked"), eq(payrollPeriods.status, "locked")));
+  async lockedRows(executor: DatabaseExecutor, periodId: string, filters:ReportFilters={}) {
+    return executor.select({
+      recordId:payrollRecords.id, employeeId:employees.id, employeeCode:employees.employeeCode,
+      employeeName:employees.firstName, employeeLastName:employees.lastName,
+      branchId:employmentAssignments.branchId, branchName:branches.name, departmentId:employmentAssignments.departmentId,
+      totalEarnings:payrollRecords.totalEarnings, totalDeductions:payrollRecords.totalDeductions, netPay:payrollRecords.netPay,
+      // NULL legacy only: frozen daily earnings, never contractual salary or current membership.
+      baseSalary:sql<string>`coalesce(${payrollRecords.socialSecurityBaseSnapshot}, (select sum(${payrollItems.amount}) from ${payrollItems} where ${payrollItems.payrollRecordId}=${payrollRecords.id} and ${payrollItems.itemType}='base_salary' and ${payrollItems.direction}='earning'),0)::numeric(12,2)::text`,
+      socialSecurityDeduction:sql<string>`coalesce((select sum(${payrollItems.amount}) from ${payrollItems} where ${payrollItems.payrollRecordId}=${payrollRecords.id} and ${payrollItems.itemType}='social_security' and ${payrollItems.direction}='deduction'),0)::numeric(12,2)::text`,
+      paymentStatus:payrollPayments.status, paymentMethod:payrollPayments.paymentMethod,
+      accountHolder:payrollPayments.accountHolderNameSnapshot, accountCiphertext:payrollPayments.accountNumberCiphertextSnapshot, bankCode:payrollPayments.bankCodeSnapshot,
+    }).from(payrollRecords)
+      .innerJoin(payrollPeriods,eq(payrollPeriods.id,payrollRecords.payrollPeriodId))
+      .innerJoin(employees,eq(employees.id,payrollRecords.employeeId))
+      .innerJoin(employmentAssignments,eq(employmentAssignments.id,payrollRecords.employmentAssignmentId))
+      .innerJoin(branches,eq(branches.id,employmentAssignments.branchId))
+      .leftJoin(payrollPayments,and(eq(payrollPayments.payrollRecordId,payrollRecords.id),or(eq(payrollPayments.status,"prepared"),eq(payrollPayments.status,"paid"))))
+      .where(and(eq(payrollRecords.payrollPeriodId,id(periodId)),eq(payrollRecords.status,"locked"),eq(payrollPeriods.status,"locked"),filters.branchId?eq(employmentAssignments.branchId,id(filters.branchId)):undefined,filters.departmentId?eq(employmentAssignments.departmentId,id(filters.departmentId)):undefined))
+      .orderBy(branches.id,employees.employeeCode,payrollRecords.id);
   },
 };

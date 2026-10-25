@@ -9,3 +9,7 @@ test("report routes expose typed CSV downloads", async () => {
   expect(response.headers.get("content-type")).toContain("text/csv");
   expect(await response.text()).toContain("base_salary");
 });
+test("report downloads reject malformed IDs and unknown filters with validation errors",async()=>{
+ const app=createReportRoutes({service:{} as never,authenticate:async()=>actor});
+ for(const query of["period_id=0","period_id=1&branch_id=bad","period_id=1&unknown=2"]){const r=await app.handle(new Request(`http://test/api/v1/reports/salary-summary.pdf?${query}`));expect(r.status).toBe(422);expect((await r.json()).error.code).toBe("VALIDATION_ERROR");}
+});
