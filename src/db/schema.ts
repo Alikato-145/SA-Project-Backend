@@ -23,3 +23,4 @@ export * from "../features/role/role.schema";
 export * from "../features/shop/shop.schema";
 export * from "../features/user-account/user-account.schema";
 export * from "./schema.relations";
+export * from "../features/payroll/payroll-payment.schema";

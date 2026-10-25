@@ -82,9 +82,9 @@ catalogTest("PostgreSQL catalog contains the canonical baseline", async () => {
     )
   ).rows;
 
-  expect(Number(table_count)).toBe(38);
-  expect(Number(enum_count)).toBe(24);
-  expect(Number(migration_count)).toBe(5);
+  expect(Number(table_count)).toBe(39);
+  expect(Number(enum_count)).toBe(25);
+  expect(Number(migration_count)).toBe(6);
 });
 
 catalogTest("all domain primary keys use bigint", async () => {
@@ -102,7 +102,7 @@ catalogTest("all domain primary keys use bigint", async () => {
        and constraints.table_schema = 'public'`,
   );
 
-  expect(rows).toHaveLength(38);
+  expect(rows).toHaveLength(39);
   expect(rows.every(({ data_type }) => data_type === "bigint")).toBe(true);
 });
 
@@ -127,6 +127,7 @@ catalogTest("installs PostgreSQL history protections", async () => {
          'overtime_approval_actions_append_only',
          'debt_transactions_append_only',
          'payroll_records_locked_immutable',
+         'payroll_payment_snapshot_guard',
          'payroll_items_locked_immutable'
        )`,
   );
@@ -144,6 +145,7 @@ catalogTest("installs PostgreSQL history protections", async () => {
     'leave_approval_actions_append_only',
     'overtime_approval_actions_append_only',
     'payroll_items_locked_immutable',
+    'payroll_payment_snapshot_guard',
     'payroll_records_locked_immutable',
   ]);
 });

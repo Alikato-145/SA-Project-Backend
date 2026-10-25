@@ -1,3 +1,4 @@
+import { payrollPayments } from "../features/payroll/payroll-payment.schema";
 // Runtime relation metadata stays separate from feature-owned table definitions.
 import { relations } from "drizzle-orm";
 import { advanceRequests } from "../features/advance/advance.schema";
@@ -196,7 +197,8 @@ export const payrollPeriodsRelations = relations(payrollPeriods, ({ one }) => ({
   lockedBy: one(userAccounts, { fields: [payrollPeriods.lockedByUserAccountId], references: [userAccounts.id] }),
 }));
 
-export const payrollRecordsRelations = relations(payrollRecords, ({ one }) => ({
+export const payrollRecordsRelations = relations(payrollRecords, ({ one, many }) => ({
+  payments: many(payrollPayments),
   payrollPeriod: one(payrollPeriods, { fields: [payrollRecords.payrollPeriodId], references: [payrollPeriods.id] }),
   employee: one(employees, { fields: [payrollRecords.employeeId], references: [employees.id] }),
   assignmentSnapshot: one(employmentAssignments, { fields: [payrollRecords.employmentAssignmentId], references: [employmentAssignments.id] }),
@@ -241,4 +243,13 @@ export const loanRequestsRelations = relations(loanRequests, ({one}) => ({
  requestedBy: one(userAccounts, {fields:[loanRequests.requestedByUserAccountId],references:[userAccounts.id],relationName:"loanRequestRequester"}),
  decidedBy: one(userAccounts, {fields:[loanRequests.decidedByUserAccountId],references:[userAccounts.id],relationName:"loanRequestDecider"}),
  loan: one(loans, {fields:[loanRequests.loanId],references:[loans.id]}),
+}));
+
+export const payrollPaymentsRelations = relations(payrollPayments, ({ one }) => ({
+  payrollRecord: one(payrollRecords, { fields: [payrollPayments.payrollRecordId], references: [payrollRecords.id] }),
+  branchSnapshot: one(branches, { fields: [payrollPayments.branchIdSnapshot], references: [branches.id] }),
+  bankAccount: one(employeeBankAccounts, { fields: [payrollPayments.employeeBankAccountId], references: [employeeBankAccounts.id] }),
+  preparedBy: one(userAccounts, { fields: [payrollPayments.preparedByUserAccountId], references: [userAccounts.id], relationName: "paymentPreparedBy" }),
+  paidBy: one(userAccounts, { fields: [payrollPayments.paidByUserAccountId], references: [userAccounts.id], relationName: "paymentPaidBy" }),
+  cancelledBy: one(userAccounts, { fields: [payrollPayments.cancelledByUserAccountId], references: [userAccounts.id], relationName: "paymentCancelledBy" }),
 }));

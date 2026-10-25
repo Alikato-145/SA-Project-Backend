@@ -1,3 +1,6 @@
+import { createPayrollPaymentRoutes } from "./features/payroll/payroll-payment.routes";
+import { createPayrollPaymentService } from "./features/payroll/payroll-payment.service";
+import { payrollPaymentRepository } from "./features/payroll/payroll-payment.repository";
 import { createLoanRequestRuntimeService } from "./features/loan/loan-request.runtime.service";
 import { LoanRequestController } from "./features/loan/loan-request.controller";
 import { createLoanRequestRoutes } from "./features/loan/loan-request.routes";
@@ -257,6 +260,12 @@ const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
   };
 };
 
+const concretePayrollPaymentOptions = () => {
+  const audit = createAuditService(db, auditRepository);
+  const employeeOptions = concreteEmployeeOptions();
+  return { service: createPayrollPaymentService({rootExecutor:db,transactionRunner,repository:payrollPaymentRepository,actions:audit.actions,domain:audit.domain,employee:employeeOptions.service,bank:employeeOptions.bankAccountService}),authenticate:createAuthenticator(),allowedOrigins:authConfig.allowedOrigins };
+};
+
 const concretePayslipService = () => {
   const audit = createAuditService(db, auditRepository);
   return createPayslipService({ rootExecutor: db, transactionRunner, actions: audit.actions, domain: audit.domain });
@@ -305,6 +314,7 @@ export const createApp = (
     .use(createAuditRoutes({ service: createAuditService(db, auditRepository), authenticate: createAuthenticator() }))
     .use(createA3EmployeeRoutes(employeeOptions))
     .use(createPayrollRoutes(payrollOptions))
+    .use(createPayrollPaymentRoutes(concretePayrollPaymentOptions()))
     .use(createPayslipRoutes({ service: concretePayslipService(), authenticate: createAuthenticator(), allowedOrigins: authConfig.allowedOrigins }))
     .use(createReportRoutes({ service: concreteReportService(), authenticate: createAuthenticator() }))
     .use(createAttendanceRoutes({...operationsOptions,controller:new AttendanceController(operationsOptions.attendance)}))

@@ -36,6 +36,13 @@
       "when": 1792876242280,
       "tag": "0004_conscious_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792877299603,
+      "tag": "0005_sloppy_rafael_vega",
+      "breakpoints": true
     }
   ]
 }

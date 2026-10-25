@@ -51,3 +51,5 @@ export const emailDeliveryStatusEnum = pgEnum("email_delivery_status", emailDeli
 
 export const loanRequestStatusValues = ["pending", "approved", "rejected"] as const;
 export const loanRequestStatusEnum = pgEnum("loan_request_status", loanRequestStatusValues);
+
+export const payrollPaymentStatusEnum = pgEnum("payroll_payment_status", ["prepared", "paid", "cancelled"]);

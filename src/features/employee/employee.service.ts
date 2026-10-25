@@ -68,6 +68,12 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
   const today = dependencies.today ?? currentBangkokDate;
   const paymentRepository = dependencies.paymentRepository ?? employeePaymentRepository;
   return {
+    async getPaymentDestinationInTransaction(executor: DatabaseExecutor, command: { actor: AuthenticatedActor; requestId: string; employeeId: string }): Promise<EmployeePaymentDestination> {
+      requireAdministrator(command.actor);
+      const destination = await paymentRepository.findPaymentDestination(executor, String(parseEmployeeId(command.employeeId, "employee_id")), true);
+      if (!destination) throw new ApplicationError("RESOURCE_NOT_FOUND");
+      return destination;
+    },
     async getPaymentDestination(command: { actor: AuthenticatedActor; requestId: string; employeeId: string }): Promise<EmployeePaymentDestination> {
       const id = String(parseEmployeeId(command.employeeId, "employee_id"));
       const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.payment_destination.read", target: { tableName: "employees", recordId: id } });

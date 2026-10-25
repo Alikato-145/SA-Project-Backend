@@ -1,4 +1,5 @@
 export const errorCodes = [
+  "PAYMENT_PERIOD_NOT_LOCKED", "PAYMENT_DESTINATION_REQUIRED", "PAYMENT_QR_UNAVAILABLE",
   "ADVANCE_ALREADY_EXISTS",
   "ADVANCE_HALF_SALARY_EXCEEDED",
   "ADVANCE_INELIGIBLE_DATE",
@@ -93,6 +94,7 @@ export const errorCodes = [
 export type ErrorCode = (typeof errorCodes)[number];
 
 export const errorStatusByCode = {
+  PAYMENT_PERIOD_NOT_LOCKED: 409, PAYMENT_DESTINATION_REQUIRED: 409, PAYMENT_QR_UNAVAILABLE: 409,
   ADVANCE_ALREADY_EXISTS: 409,
   ADVANCE_HALF_SALARY_EXCEEDED: 422,
   ADVANCE_INELIGIBLE_DATE: 422,
@@ -185,6 +187,7 @@ export const errorStatusByCode = {
 } as const satisfies Record<ErrorCode, number>;
 
 export const errorMessageByCode = {
+  PAYMENT_PERIOD_NOT_LOCKED: "Lock payroll before preparing payments.", PAYMENT_DESTINATION_REQUIRED: "Register employee payment destinations before preparation.", PAYMENT_QR_UNAVAILABLE: "QR is available only for prepared nonmember transfers.",
   ADVANCE_ALREADY_EXISTS: "Advance already exists.",
   ADVANCE_HALF_SALARY_EXCEEDED: "Advance half salary exceeded.",
   ADVANCE_INELIGIBLE_DATE: "Advance ineligible date.",
