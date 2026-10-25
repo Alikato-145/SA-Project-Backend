@@ -1,3 +1,4 @@
+import { ApplicationError } from "../../core/errors/application.error";
 import { realDate } from "../../shared/operation-validation";
 import type { AdvanceActor } from "./advance.dto";
 import { AdvanceError, type AdvanceRepository } from "./advance.repository";
@@ -22,6 +23,10 @@ const cents = (value: string, allowNegative = false): bigint => {
   const amount = BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0"));
   return negative ? -amount : amount;
 };
+const requiredText = (value: string): string => {
+  if (typeof value !== "string" || !value.trim() || value.length > 1000) throw new ApplicationError("VALIDATION_ERROR");
+  return value.trim();
+};
 const bangkokDate = (value: Date) => {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
@@ -38,13 +43,14 @@ export class AdvanceService {
     private readonly today: () => string = () => bangkokDate(new Date()),
     private readonly thresholds={requestDay:20,workedDays:20,salaryRatio:"0.5000"},
   ) {}
-  async submitAdvance(actor: AdvanceActor, employeeId: number, amount: string) {
+  async submitAdvance(actor: AdvanceActor, employeeId: number, amount: string, reason: string) {
+    const requestReason = requiredText(reason);
     const date = this.today();
     this.assertEligibleDate(date);
     if (cents(amount) <= 0n) throw new AdvanceError("INVALID_ADVANCE_AMOUNT");
     await this.access.assertCanRequest(actor, employeeId);
     return this.repository.insert({
-      employeeId, amount, requestMonth: `${date.slice(0, 7)}-01`,
+      employeeId, amount, reason: requestReason, requestMonth: `${date.slice(0, 7)}-01`,
       requestedByUserAccountId: actor.accountId,
     });
   }
@@ -65,10 +71,11 @@ export class AdvanceService {
     if (net < 0n) throw new AdvanceError("ADVANCE_NEGATIVE_NET_PAY");
     return this.repository.decide(id, "approved", actor.accountId);
   }
-  async rejectAdvance(actor: AdvanceActor, id: number, note?: string) {
+  async rejectAdvance(actor: AdvanceActor, id: number, note: string) {
+    const decisionNote = requiredText(note);
     const request = await this.requirePending(id);
     await this.access.assertCanDecide(actor, request.employeeId, bangkokDate(request.requestedAt));
-    return this.repository.decide(id, "rejected", actor.accountId, note);
+    return this.repository.decide(id, "rejected", actor.accountId, decisionNote);
   }
   async listRequests(actor: AdvanceActor, employeeId: number) {
     await this.access.assertCanRead(actor, employeeId);

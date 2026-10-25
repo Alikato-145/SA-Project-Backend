@@ -1,0 +1,1 @@
+ALTER TABLE "advance_requests" ADD COLUMN "reason" text;

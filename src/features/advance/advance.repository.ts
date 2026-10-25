@@ -15,7 +15,7 @@ export class AdvanceError extends ApplicationError {
   }
 }
 export type AdvanceRepository = {
-  insert(command: { employeeId: number; requestMonth: string; amount: string; requestedByUserAccountId: number }): Promise<AdvanceRecord>;
+  insert(command: { employeeId: number; requestMonth: string; amount: string; reason: string; requestedByUserAccountId: number }): Promise<AdvanceRecord>;
   findById(id: number): Promise<AdvanceRecord | undefined>;
   decide(id: number, status: "approved" | "rejected", actorId: number, note?: string): Promise<AdvanceRecord>;
   listByEmployee(employeeId: number): Promise<AdvanceRecord[]>;

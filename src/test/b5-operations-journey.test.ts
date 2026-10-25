@@ -59,7 +59,7 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     // Pending approvals and missing attendance in another shop must not block ours.
     await client.query("insert into leave_requests(employee_id,original_leave_type_id,start_date,end_date,requested_days,submitted_by_user_account_id) values($1,$2,$3,$3,'1',$4)", [otherEmployee, leaveType, day(1), owner]);
     await client.query("insert into overtime_records(employee_id,overtime_date,overtime_type,hours,requested_by_user_account_id) values($1,$2,'hourly','1',$3)", [otherEmployee, day(1), owner]);
-    await client.query("insert into advance_requests(employee_id,request_month,amount,requested_by_user_account_id) values($1,$2,'1.00',$3)", [otherEmployee, day(1), owner]);
+    await client.query("insert into advance_requests(employee_id,request_month,amount,requested_by_user_account_id,reason) values($1,$2,'1.00',$3,'B5 other-shop pending advance')", [otherEmployee, day(1), owner]);
     await client.query("COMMIT");
 
     const { createApp } = await import("../app");
@@ -95,7 +95,7 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     expect((await request(`/leave-requests?employee_id=9007199254740993`)).status).toBe(422);
     expect((await request(`/work-day-records?employee_id=${employee}&start_date=2026-02-30&end_date=2026-03-01`)).status).toBe(422);
     expect((await request("/work-day-records", { employee_id: employee, branch_id: branchA, work_date: day(1), status: "present", late_minutes: 0, is_deductible: false, actor: { scope: "all" } })).status).toBe(422);
-    const wrongOrigin = await app.handle(new Request(`${origin}/api/v1/advance-requests`, { method: "POST", headers: { origin: "https://invalid.example", "content-type": "application/json", cookie: cookies.get(owner)! }, body: JSON.stringify({ employee_id: employee, amount: "1.00" }) }));
+    const wrongOrigin = await app.handle(new Request(`${origin}/api/v1/advance-requests`, { method: "POST", headers: { origin: "https://invalid.example", "content-type": "application/json", cookie: cookies.get(owner)! }, body: JSON.stringify({ employee_id: employee, amount: "1.00", reason: "B5 origin denial" }) }));
     expect(wrongOrigin.status).toBe(403);
     for (const branch of [branchA, branchB]) {
       await success("/branch-schedules", { branch_id: branch, work_start_time: "09:00:00", standard_close_time: "21:00:00", late_grace_minutes: 5, effective_from: day(1), effective_to: null });
@@ -131,7 +131,7 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     // separately verified ineligible outcome and do not fabricate eligibility.
     let advanceAmount = 0;
     if (Number(today.slice(-2)) >= 26) {
-      const advance = await success("/advance-requests", { employee_id: employee, amount: "1000.00" }, self);
+      const advance = await success("/advance-requests", { employee_id: employee, amount: "1000.00", reason: "B5 household expenses" }, self);
       expect((await request(`/payroll/periods/${period.id}/lock`, {})).status).toBe(409);
       await success(`/advance-requests/${advance.id}/approve`, {});
       advanceAmount = 1000;

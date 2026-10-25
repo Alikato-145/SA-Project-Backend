@@ -31,6 +31,7 @@ export const advanceRequests = pgTable(
       .references(() => employees.id, restrict),
     requestMonth: date("request_month").notNull(),
     amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    reason: text("reason"),
     status: advanceStatusEnum("status")
       .notNull()
       .default("pending"),
