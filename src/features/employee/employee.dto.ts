@@ -49,10 +49,10 @@ export interface EmployeeHrDto extends EmployeeOwnDto {
 
 export type EmployeeResponseDto = EmployeeTeamDto | EmployeeOwnDto | EmployeeHrDto;
 
-export interface EmployeeCreateBodyDto { employee_code: unknown; national_id?: unknown; passport_id?: unknown; first_name: unknown; last_name: unknown; phone?: unknown; personal_email?: unknown; address?: unknown; hire_date: unknown }
+export interface EmployeeCreateBodyDto { employee_code?: unknown; national_id?: unknown; passport_id?: unknown; first_name: unknown; last_name: unknown; phone?: unknown; personal_email?: unknown; address?: unknown; hire_date: unknown }
 export interface EmployeeUpdateBodyDto { national_id?: unknown; passport_id?: unknown; first_name?: unknown; last_name?: unknown; phone?: unknown; personal_email?: unknown; address?: unknown }
 export interface EmployeeStatusBodyDto { status: unknown; terminated_at?: unknown; reason: unknown }
-export interface EmployeeCreateCommand { employeeCode: string; nationalId: string | null; passportId: string | null; firstName: string; lastName: string; phone: string | null; personalEmail: string | null; address: string | null; hireDate: string }
+export interface EmployeeCreateCommand { employeeCode?: string; nationalId: string | null; passportId: string | null; firstName: string; lastName: string; phone: string | null; personalEmail: string | null; address: string | null; hireDate: string }
 export type EmployeeUpdateCommand = Partial<Omit<EmployeeCreateCommand, "employeeCode" | "hireDate">>;
 export interface EmployeeStatusCommand { status: EmployeeStatus; terminatedAt: string | null; reason: string }
 
@@ -103,7 +103,7 @@ export const parseEmployeeListFilters = (query: EmployeeListQueryDto): EmployeeL
 
 export const parseEmployeeCreate = (body: EmployeeCreateBodyDto): EmployeeCreateCommand => {
   const result = {
-    employeeCode: text(body.employee_code, "employee_code", 30), nationalId: nullableText(body.national_id, "national_id", 20),
+    employeeCode: body.employee_code === undefined ? undefined : text(body.employee_code, "employee_code", 30), nationalId: nullableText(body.national_id, "national_id", 20),
     passportId: nullableText(body.passport_id, "passport_id", 30), firstName: text(body.first_name, "first_name", 100),
     lastName: text(body.last_name, "last_name", 100), phone: nullableText(body.phone, "phone", 30),
     personalEmail: email(body.personal_email), address: nullableText(body.address, "address", 2_000),
@@ -135,7 +135,7 @@ export const parseEmployeeStatus = (body: EmployeeStatusBodyDto): EmployeeStatus
   return { status, terminatedAt, reason: text(body.reason, "reason", 500) };
 };
 
-export interface EmployeeOnboardingBodyDto { employee: EmployeeCreateBodyDto; assignment: AssignmentBodyDto; bank_account?: BankCreateBody; weekly_holidays?: { weekday: unknown; effective_from: unknown; effective_to?: unknown }[]; account?: { username: unknown } }
+export interface EmployeeOnboardingBodyDto { employee: EmployeeCreateBodyDto; assignment: AssignmentBodyDto; bank_account?: BankCreateBody; weekly_holidays?: { weekday: unknown; effective_from: unknown; effective_to?: unknown }[]; account?: { username: unknown; role_code?: unknown } }
 export interface EmployeeOnboardingResponseDto {
   employee: EmployeeResponseDto;
   assignment_id: string;
@@ -146,8 +146,8 @@ export interface EmployeeOnboardingResponseDto {
 }
 export const parseEmployeeOnboarding = (body: EmployeeOnboardingBodyDto) => {
   if (!body || typeof body !== "object") invalid("body");
-  let account: { username: string } | undefined;
-  if (body.account !== undefined) { const username = text(body.account.username, "username", 100); if (!/^[A-Za-z0-9._-]{3,100}$/.test(username)) invalid("username"); account = { username }; }
+  let account: { username: string; roleCode: import("../../core/auth/auth.types").RoleCode } | undefined;
+  if (body.account !== undefined) { const username = text(body.account.username, "username", 100); if (!/^[A-Za-z0-9._-]{3,100}$/.test(username)) invalid("username"); const roleCode = body.account.role_code ?? "EMPLOYEE"; if (typeof roleCode !== "string" || !["EMPLOYEE", "SUPERVISOR", "BRANCH_MANAGER", "HR", "OWNER"].includes(roleCode)) invalid("role_code"); account = { username, roleCode: roleCode as import("../../core/auth/auth.types").RoleCode }; }
   return { employee: parseEmployeeCreate(body.employee), assignment: parseAssignmentBody(body.assignment), bankAccount: body.bank_account === undefined ? undefined : parseBankCreate(body.bank_account), weeklyHolidays: (body.weekly_holidays ?? []).map(parseHolidayCreate), account };
 };
 

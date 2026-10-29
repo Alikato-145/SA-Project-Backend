@@ -90,7 +90,7 @@ export const createShopService = (dependencies: ShopServiceDependencies) => ({
   async createShop(command: {
     actor: AuthenticatedActor;
     requestId: string;
-    code: string;
+    code?: string;
     name: string;
   }): Promise<ShopRecord> {
     const context = createActionContext({
@@ -103,7 +103,7 @@ export const createShopService = (dependencies: ShopServiceDependencies) => ({
       transactionRunner(dependencies).transaction(async (executor) => {
         requireAdministrator(command.actor);
         const created = await dependencies.repository.insert(executor, {
-          code: parseRequiredTrimmedText(command.code, "code", 30),
+          code: command.code === undefined ? undefined : parseRequiredTrimmedText(command.code, "code", 30),
           name: parseRequiredTrimmedText(command.name, "name", 150),
         });
         const receipt = await dependencies.audit.domain.record(executor, context, {

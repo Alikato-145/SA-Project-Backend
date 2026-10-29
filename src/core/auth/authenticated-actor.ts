@@ -1,3 +1,4 @@
+import { employmentAccessEnded } from "./employment-access";
 import type {
   AccountStatus,
   AuthenticatedActor,
@@ -7,6 +8,7 @@ import type {
 export interface CurrentAccountRecord {
   id: number;
   employeeId: number | null;
+  employeeTerminatedAt?: string | null;
   username: string;
   status: AccountStatus;
 }
@@ -44,7 +46,7 @@ export const loadAuthenticatedActor = async (
   if (internalAccountId === null) return null;
 
   const account = await repository.findSafeById(internalAccountId);
-  if (!account || account.status !== "active") return null;
+  if (!account || account.status !== "active" || employmentAccessEnded(account.employeeTerminatedAt, new Date())) return null;
 
   const grants = await repository.findActiveGrants(internalAccountId);
   return {

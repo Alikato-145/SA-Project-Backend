@@ -11,7 +11,7 @@ import type { DatabaseExecutor, TransactionRunner } from "../../core/db/transact
 import { ApplicationError } from "../../core/errors/application.error";
 import type { EmployeeCreateCommand, EmployeeListFilters, EmployeeStatus, EmployeeUpdateCommand } from "./employee.dto";
 import type { AssignmentCommand } from "../employment-assignment/employment-assignment.dto";
-import type { OnboardingAccountCreationPort, OnboardingAssignmentPort, OnboardingBankPort, OnboardingHolidayPort } from "./employee.ports";
+import type { OnboardingAccountCreationPort, OnboardingAssignmentPort, OnboardingBankPort, OnboardingHolidayPort, OnboardingRolePort } from "./employee.ports";
 import { employeeRepository, type EmployeeReadRecord, type EmployeeRepositoryPort, type EmployeeWriteRepositoryPort } from "./employee.repository";
 import { canAdministerEmployees, canManageEmployeeBranch, projectEmployeeVisibility } from "./employee.scope";
 import { employeeAuditSnapshot } from "./employee.types";
@@ -36,7 +36,7 @@ export interface EmployeeServiceDependencies {
   domain?: DomainAuditObserver;
   today?: () => string;
   employmentTermination?:Pick<EmploymentAssignmentService,"endAssignmentsForTermination">;
-  onboarding?: { assignment: OnboardingAssignmentPort; bank: OnboardingBankPort; holiday: OnboardingHolidayPort; account: OnboardingAccountCreationPort };
+  onboarding?: { assignment: OnboardingAssignmentPort; bank: OnboardingBankPort; holiday: OnboardingHolidayPort; account: OnboardingAccountCreationPort; role: OnboardingRolePort };
 }
 
 const currentBangkokDate = (): string => new Intl.DateTimeFormat("sv-SE", {
@@ -56,7 +56,7 @@ const requireAdministrator = (actor: AuthenticatedActor) => { if (!canAdminister
 const fullVisibility = { all: true, selfEmployeeId: null, branchIds: [], departments: [] } as const;
 const snapshot = (record: EmployeeReadRecord) => employeeAuditSnapshot({ id: record.id, employee_code: record.employeeCode, status: record.status, hire_date: record.hireDate, terminated_at: record.terminatedAt });
 const validateCreate = (input: EmployeeCreateCommand) => {
-  if (!input.employeeCode.trim() || input.employeeCode.length > 30 || !input.firstName.trim() || input.firstName.length > 100 || !input.lastName.trim() || input.lastName.length > 100 || (!input.nationalId && !input.passportId)) throw new ApplicationError("VALIDATION_ERROR");
+  if ((input.employeeCode !== undefined && (!input.employeeCode.trim() || input.employeeCode.length > 30)) || !input.firstName.trim() || input.firstName.length > 100 || !input.lastName.trim() || input.lastName.length > 100 || (!input.nationalId && !input.passportId)) throw new ApplicationError("VALIDATION_ERROR");
   parseBusinessDate(input.hireDate, "hire_date");
 };
 const hasVisibility = (actor: AuthenticatedActor): boolean => {
@@ -166,7 +166,7 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
         });
       });
     },
-    async onboardEmployee(command: { actor: AuthenticatedActor; requestId: string; employee: EmployeeCreateCommand; assignment: AssignmentCommand; bankAccount?: { bankCode: string; bankName: string; accountHolderName: string; accountNumber: string; isPrimary: boolean | undefined }; weeklyHolidays: { weekday: number; effectiveFrom: string; effectiveTo: string | null }[]; account?: { username: string } }) {
+    async onboardEmployee(command: { actor: AuthenticatedActor; requestId: string; employee: EmployeeCreateCommand; assignment: AssignmentCommand; bankAccount?: { bankCode: string; bankName: string; accountHolderName: string; accountNumber: string; isPrimary: boolean | undefined }; weeklyHolidays: { weekday: number; effectiveFrom: string; effectiveTo: string | null }[]; account?: { username: string; roleCode?: import("../../core/auth/auth.types").RoleCode } }) {
       const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.onboard", target: { tableName: "employees", recordId: "unknown" } });
       return dependencies.actions.observeMutation(context, () => {
         const writes = requireWrites(dependencies);
@@ -180,6 +180,15 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
           const bank = command.bankAccount ? await dependencies.onboarding!.bank.addBankAccountInTransaction(executor, { employeeId: employee.id, ...command.bankAccount }) : null;
           const holidays = []; for (const holiday of command.weeklyHolidays) holidays.push(await dependencies.onboarding!.holiday.addHolidayInTransaction(executor, { employeeId: employee.id, ...holiday }));
           const account = command.account ? await dependencies.onboarding!.account.createAccountInTransaction(executor, { actor: command.actor, username: command.account.username, employeeId: employee.id }) : null;
+          if (account) {
+            const roleCode = command.account?.roleCode ?? "EMPLOYEE";
+            await dependencies.onboarding!.role.grantRoleInTransaction(executor, {
+              actor: command.actor, accountId: account.account.id, roleCode,
+              branchId: roleCode === "BRANCH_MANAGER" || roleCode === "SUPERVISOR" ? command.assignment.branchId : null,
+              departmentId: roleCode === "SUPERVISOR" ? command.assignment.departmentId : null,
+              reason: "Initial role during employee onboarding", requestId: command.requestId,
+            });
+          }
           const success = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.profile.onboard", target: { tableName: "employees", recordId: employee.id } });
           const receipt = await writes.domain.record(executor, success, { newData: { ...snapshot(employee), assignment_id: assignment.id, bank_account_id: bank?.id ?? null, holiday_ids: holidays.map(item => item.id), account_id: account?.account.id ?? null } });
           return writes.domain.complete({ employee: { record: employee, view: canAdministerEmployees(command.actor) ? "hr" as const : "manager" as const }, assignmentId: assignment.id, bankAccountId: bank?.id ?? null, holidayIds: holidays.map(item => item.id), accountId: account?.account.id ?? null, temporaryPassword: account?.temporaryPassword ?? null }, receipt);

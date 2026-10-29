@@ -35,16 +35,16 @@ databaseTest("effective member days and last employment snapshot persist while l
     expect(input.isSocialSecurityMember).toBe(false);
     expect(input.workDays.filter(day => day.isSocialSecurityMember)).toHaveLength(10);
     const calculated = calculatePayroll(input);
-    expect(calculated.socialSecurityBaseSnapshot).toBe("10000.00");
-    expect(calculated.items.find(item => item.itemType === "social_security")?.amount).toBe("500.00");
+    expect(calculated.socialSecurityBaseSnapshot).toBe("15000.00");
+    expect(calculated.items.find(item => item.itemType === "social_security")?.amount).toBe("750.00");
     await session.replaceCalculatedRecords(String(periodId), [calculated], String(actor), false);
     const stored = (await client.query("select id,social_security_base_snapshot,is_social_security_member_snapshot,net_pay from payroll_records where payroll_period_id=$1", [periodId])).rows[0];
-    expect(stored.social_security_base_snapshot).toBe("10000.00");
+    expect(stored.social_security_base_snapshot).toBe("15000.00");
     expect(stored.is_social_security_member_snapshot).toBe(false);
     await client.query("update payroll_records set status='locked',locked_at=now() where id=$1", [stored.id]);
     // A later effective assignment cannot reinterpret the already frozen result.
     await client.query("insert into employment_assignments(employee_id,branch_id,department_id,position_id,base_salary,effective_from,is_social_security_member) values($1,$2,$3,$4,'90000','2097-10-01',true)", [employee,branch,department,position]);
-    expect((await client.query("select social_security_base_snapshot,is_social_security_member_snapshot,net_pay from payroll_records where id=$1", [stored.id])).rows[0]).toEqual({ social_security_base_snapshot: "10000.00", is_social_security_member_snapshot: false, net_pay: stored.net_pay });
+    expect((await client.query("select social_security_base_snapshot,is_social_security_member_snapshot,net_pay from payroll_records where id=$1", [stored.id])).rows[0]).toEqual({ social_security_base_snapshot: "15000.00", is_social_security_member_snapshot: false, net_pay: stored.net_pay });
     await client.query("savepoint immutable");
     await expect(client.query("update payroll_records set social_security_base_snapshot=0 where id=$1", [stored.id])).rejects.toBeDefined();
     await client.query("rollback to savepoint immutable");

@@ -17,7 +17,7 @@ const listQuery = t.Object({
 }, { additionalProperties: false });
 const createBody = t.Object({
   branch_id: decimalId,
-  code: t.String({ minLength: 1, maxLength: 30 }),
+  code: t.Optional(t.String({ minLength: 1, maxLength: 30 })),
   name: t.String({ minLength: 1, maxLength: 100 }),
 }, { additionalProperties: false });
 const updateBody = t.Object({

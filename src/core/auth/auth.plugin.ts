@@ -7,6 +7,7 @@ import {
   type AuthenticatedActor,
   type AuthenticatedGrant,
 } from "./auth.types";
+import { employmentAccessEnded } from "./employment-access";
 import { parseActiveGrant } from "./authorization";
 import { validateCookieMutationRequest } from "./csrf-origin";
 import { createSessionTokenService, type SessionRevocationChecker } from "./session-token";
@@ -28,6 +29,7 @@ export interface ActorAccountRecord {
   username: string;
   status: AccountStatus;
   lockedUntil: Date | null;
+  employeeTerminatedAt?: string | null;
   grants: readonly ActorGrantRecord[];
 }
 
@@ -73,7 +75,7 @@ export const assertUsableAccount = (
     throw new ApplicationError("AUTH_REQUIRED");
   }
 
-  if (record.status === "disabled") {
+  if (record.status === "disabled" || employmentAccessEnded(record.employeeTerminatedAt, now)) {
     throw new ApplicationError("ACCOUNT_DISABLED");
   }
 

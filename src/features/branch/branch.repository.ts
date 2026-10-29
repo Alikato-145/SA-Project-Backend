@@ -1,3 +1,4 @@
+import { nextOrganizationId } from "../organization/organization-id";
 import {
   and,
   asc,
@@ -23,7 +24,7 @@ import { branches } from "./branch.schema";
 
 export interface BranchInsertInput {
   shopId: string;
-  code: string;
+  code?: string;
   name: string;
   address: string | null;
   timezone: string;
@@ -231,11 +232,13 @@ export const branchRepository: BranchRepositoryPort = {
 
   async insert(executor, input) {
     try {
+      const id = input.code === undefined ? await nextOrganizationId(executor, "branches") : undefined;
       const [row] = await executor
         .insert(branches)
         .values({
           shopId: numericId(input.shopId),
-          code: input.code,
+          id,
+          code: input.code ?? String(id),
           name: input.name,
           address: input.address,
           timezone: input.timezone,

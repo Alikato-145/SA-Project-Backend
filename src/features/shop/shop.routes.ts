@@ -15,7 +15,7 @@ const listQuery = t.Object({
   is_active: t.Optional(t.String()),
 }, { additionalProperties: false });
 const createBody = t.Object({
-  code: t.String({ minLength: 1, maxLength: 30 }),
+  code: t.Optional(t.String({ minLength: 1, maxLength: 30 })),
   name: t.String({ minLength: 1, maxLength: 150 }),
 }, { additionalProperties: false });
 const updateBody = t.Object({

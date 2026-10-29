@@ -18,7 +18,7 @@ export interface DepartmentListQueryDto {
 
 export interface DepartmentCreateRequestDto {
   branch_id: unknown;
-  code: unknown;
+  code?: unknown;
   name: unknown;
 }
 
@@ -31,7 +31,7 @@ export interface DepartmentUpdateRequestDto {
 
 export interface ParsedDepartmentCreateRequest {
   branchId: string;
-  code: string;
+  code?: string;
   name: string;
 }
 
@@ -58,7 +58,7 @@ export const parseCreateDepartmentRequest = (
   body: DepartmentCreateRequestDto,
 ): ParsedDepartmentCreateRequest => ({
   branchId: String(parseDecimalBigIntId(body.branch_id, "branch_id")),
-  code: parseRequiredTrimmedText(body.code, "code", 30),
+  code: body.code === undefined ? undefined : parseRequiredTrimmedText(body.code, "code", 30),
   name: parseRequiredTrimmedText(body.name, "name", 100),
 });
 

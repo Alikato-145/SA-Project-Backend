@@ -15,7 +15,7 @@ export interface ShopListQueryDto {
 }
 
 export interface CreateShopRequestDto {
-  code: string;
+  code?: string;
   name: string;
 }
 

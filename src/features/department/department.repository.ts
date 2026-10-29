@@ -1,3 +1,4 @@
+import { nextOrganizationId } from "../organization/organization-id";
 import {
   and,
   asc,
@@ -22,7 +23,7 @@ import { departments } from "./department.schema";
 
 export interface DepartmentInsertInput {
   branchId: string;
-  code: string;
+  code?: string;
   name: string;
 }
 
@@ -187,11 +188,13 @@ export const departmentRepository: DepartmentRepositoryPort = {
 
   async insert(executor, input) {
     try {
+      const id = input.code === undefined ? await nextOrganizationId(executor, "departments") : undefined;
       const [row] = await executor
         .insert(departments)
         .values({
           branchId: numericId(input.branchId),
-          code: input.code,
+          id,
+          code: input.code ?? String(id),
           name: input.name,
         })
         .returning();

@@ -24,7 +24,7 @@ const listQuery = t.Object({
 
 const nullableString = t.Union([t.String(), t.Null()]);
 const createBody = t.Object({
-  employee_code: t.String(), national_id: t.Optional(nullableString), passport_id: t.Optional(nullableString),
+  employee_code: t.Optional(t.String()), national_id: t.Optional(nullableString), passport_id: t.Optional(nullableString),
   first_name: t.String(), last_name: t.String(), phone: t.Optional(nullableString),
   personal_email: t.Optional(nullableString), address: t.Optional(nullableString), hire_date: t.String(),
 }, { additionalProperties: false });
@@ -58,7 +58,7 @@ const onboardingBody = t.Object({
     effective_from: t.String(),
     effective_to: t.Optional(nullableString),
   }, { additionalProperties: false }))),
-  account: t.Optional(t.Object({ username: t.String() }, { additionalProperties: false })),
+  account: t.Optional(t.Object({ username: t.String(), role_code: t.Optional(t.Union([t.Literal("EMPLOYEE"), t.Literal("SUPERVISOR"), t.Literal("BRANCH_MANAGER"), t.Literal("HR"), t.Literal("OWNER")])) }, { additionalProperties: false })),
 }, { additionalProperties: false });
 
 export interface EmployeeRoutesOptions {

@@ -5,6 +5,7 @@ import { ApplicationError } from "../../core/errors/application.error";
 import { parseActiveGrant } from "../../core/auth/authorization";
 import { realDate, bangkokToday } from "../../shared/operation-validation";
 import { AttendanceService } from "./attendance.service";
+import { defaultScheduledTimes } from "./attendance-default-clock";
 import { DrizzleAttendanceRepository } from "./attendance.repository";
 import type { BranchScheduleService } from "../branch-schedule/branch-schedule.service";
 import type { HolidayCalendarService } from "../holiday-calendar/holiday-calendar.service";
@@ -83,7 +84,9 @@ export const createAttendanceRuntimeService=(runtime:OperationRuntime,schedule:B
   },
 
   createManualWorkDay:(actor:AttendanceActor,command:CreateManualWorkDayCommand)=>runOperation(runtime,actor,"attendance","create","work_day_records",async()=>{
-   const scope=await manage(actor,command);await runtime.payroll.assertInputsMutable(operationExecutor(),{employeeId:command.employeeId,startDate:command.workDate,endDate:command.workDate});await validate(command,scope==="self");return {value:await create(actor,command)};
+   const scope=await manage(actor,command);await runtime.payroll.assertInputsMutable(operationExecutor(),{employeeId:command.employeeId,startDate:command.workDate,endDate:command.workDate});
+   if(command.status==="present" && command.lateMinutes===0 && !command.clockInAt && !command.clockOutAt) command=defaultScheduledTimes(command,await schedule.getApplicableSchedule(command.branchId,command.workDate));
+   await validate(command,scope==="self");return {value:await create(actor,command)};
   }),
   correctWorkDay:(actor:AttendanceActor,id:number,command:Parameters<typeof correct>[2])=>runOperation(runtime,actor,"attendance","correct","work_day_records",async()=>{
    const oldData=await repository.findById(id);if(!oldData)throw new ApplicationError("RESOURCE_NOT_FOUND");const scope=await manage(actor,oldData);

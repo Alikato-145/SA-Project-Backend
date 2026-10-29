@@ -70,3 +70,9 @@ describe("authenticated actor loading", () => {
     expect(parseAccountId("9007199254740992")).toBeNull();
   });
 });
+
+test("the alternate actor loader rejects an ended linked employment", async () => {
+  const source = repository("active");
+  const ended = { ...source, async findSafeById(id: number) { return { ...(await source.findSafeById(id)), employeeTerminatedAt: "2000-01-01" }; } };
+  expect(await loadAuthenticatedActor("42", ended)).toBeNull();
+});

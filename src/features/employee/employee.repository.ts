@@ -1,3 +1,4 @@
+import { nextOrganizationId } from "../organization/organization-id";
 import type { EmployeePaymentDestination } from "./employee.payment-destination";
 import { and, asc, count, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
@@ -150,7 +151,8 @@ export const employeeRepository: EmployeeWriteRepositoryPort = {
   },
   async insert(executor, input) {
     try {
-      const [row] = await executor.insert(employees).values(input).returning();
+      const id = input.employeeCode === undefined ? await nextOrganizationId(executor, "employees") : undefined;
+      const [row] = await executor.insert(employees).values({ ...input, id, employeeCode: input.employeeCode ?? String(id) }).returning();
       if (!row) throw new Error("Employee insert did not return a row");
       return projectEmployee(row);
     } catch (error) { return rethrowEmployeePersistenceError(error); }

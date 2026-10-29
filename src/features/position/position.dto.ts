@@ -46,7 +46,7 @@ export interface PositionListResponseDto {
 
 export interface PositionCreateRequestDto {
   shop_id: unknown;
-  code: unknown;
+  code?: unknown;
   name: unknown;
 }
 
@@ -59,7 +59,7 @@ export interface PositionUpdateRequestDto {
 
 export interface ParsedPositionCreateRequest {
   shopId: string;
-  code: string;
+  code?: string;
   name: string;
 }
 
@@ -96,7 +96,7 @@ export const parseCreatePositionRequest = (
   body: PositionCreateRequestDto,
 ): ParsedPositionCreateRequest => ({
   shopId: String(parseDecimalBigIntId(body.shop_id, "shop_id")),
-  code: parseRequiredTrimmedText(body.code, "code", 30),
+  code: body.code === undefined ? undefined : parseRequiredTrimmedText(body.code, "code", 30),
   name: parseRequiredTrimmedText(body.name, "name", 100),
 });
 

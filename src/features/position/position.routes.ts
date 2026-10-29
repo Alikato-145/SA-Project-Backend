@@ -21,7 +21,7 @@ const listQuery = t.Object(
 const createBody = t.Object(
   {
     shop_id: decimalId,
-    code: t.String({ minLength: 1, maxLength: 30 }),
+    code: t.Optional(t.String({ minLength: 1, maxLength: 30 })),
     name: t.String({ minLength: 1, maxLength: 100 }),
   },
   { additionalProperties: false },

@@ -1,3 +1,4 @@
+import { nextOrganizationId } from "../organization/organization-id";
 import {
   and,
   asc,
@@ -41,7 +42,7 @@ export interface PositionRepositoryPort {
   findById(executor: DatabaseExecutor, id: string): Promise<PositionRecord | null>;
   insert(
     executor: DatabaseExecutor,
-    input: { shopId: string; code: string; name: string },
+    input: { shopId: string; code?: string; name: string },
   ): Promise<PositionRecord>;
   update(
     executor: DatabaseExecutor,
@@ -185,11 +186,13 @@ export const positionRepository: PositionRepositoryPort = {
 
   async insert(executor, input) {
     try {
+      const id = input.code === undefined ? await nextOrganizationId(executor, "positions") : undefined;
       const [row] = await executor
         .insert(positions)
         .values({
           shopId: numericId(input.shopId),
-          code: input.code,
+          id,
+          code: input.code ?? String(id),
           name: input.name,
         })
         .returning();

@@ -33,7 +33,7 @@ export interface BranchDetailResponseDto {
 
 export interface BranchCreateRequestDto {
   shop_id: unknown;
-  code: unknown;
+  code?: unknown;
   name: unknown;
   address?: unknown;
   timezone?: unknown;
@@ -54,7 +54,7 @@ export interface BranchDeactivateRequestDto {
 
 export interface ParsedBranchCreateRequest {
   shopId: string;
-  code: string;
+  code?: string;
   name: string;
   address: string | null;
   timezone: string;
@@ -79,7 +79,7 @@ export const parseCreateBranchRequest = (
   body: BranchCreateRequestDto,
 ): ParsedBranchCreateRequest => ({
   shopId: String(parseDecimalBigIntId(body.shop_id, "shop_id")),
-  code: parseRequiredTrimmedText(body.code, "code", 30),
+  code: body.code === undefined ? undefined : parseRequiredTrimmedText(body.code, "code", 30),
   name: parseRequiredTrimmedText(body.name, "name", 150),
   address: parseOptionalTrimmedText(body.address, "address", 500) ?? null,
   timezone: parseIanaTimezone(body.timezone, "timezone"),

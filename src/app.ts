@@ -77,7 +77,7 @@ import { createPayrollService } from "./features/payroll/payroll.service";
 import { createPositionService } from "./features/position/position.service";
 import { positionRepository } from "./features/position/position.repository";
 import { createRoleRoutes, type RoleRoutesOptions } from "./features/role/role.routes";
-import { createRoleService } from "./features/role/role.service";
+import { createRoleService, grantRoleInTransaction } from "./features/role/role.service";
 import { roleRepository } from "./features/role/role.repository";
 import { shopRepository } from "./features/shop/shop.repository";
 import { createShopService } from "./features/shop/shop.service";
@@ -249,6 +249,7 @@ const concreteEmployeeOptions = (): A3EmployeeRoutesOptions => {
         bank: bankAccountService,
         holiday: weeklyHolidayService,
         account: accountService,
+        role: { grantRoleInTransaction: (executor, command) => grantRoleInTransaction({ repository: roleRepository, rootExecutor: db, transactionRunner, audit }, executor, command) },
       },
     }),
     actions: audit.actions,

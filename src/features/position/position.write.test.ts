@@ -64,7 +64,7 @@ const setup = (options: {
     },
     async insert(_executor, input) {
       calls.push({ kind: "insert", value: input });
-      stored = { id: "9", ...input, isActive: true, createdAt: now, updatedAt: now };
+      stored = { id: "9", ...input, code: input.code ?? "1", isActive: true, createdAt: now, updatedAt: now };
       return stored;
     },
     async update(_executor, id, input) {

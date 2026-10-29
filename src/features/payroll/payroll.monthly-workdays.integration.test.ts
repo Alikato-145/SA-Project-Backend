@@ -1,0 +1,52 @@
+import { expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { Client } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { calculatePayroll } from "./calculation/payroll-calculator";
+
+const databaseTest = process.env.TEST_DATABASE_URL ? test : test.skip;
+databaseTest("automatically counts the employment interval and dated branch closures and persists evidence", async () => {
+  const client = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+  await client.connect();
+  const key = `MEM-${randomUUID().slice(0,8)}`;
+  const one = async (query: string, values: unknown[] = []): Promise<number> => Number((await client.query(query, values)).rows[0].id);
+  try {
+    await client.query("begin");
+    const shop = await one("insert into shops(code,name) values($1,'Membership') returning id", [key]);
+    const branch = await one("insert into branches(shop_id,code,name) values($1,'A','A') returning id", [shop]);
+    const branchB = await one("insert into branches(shop_id,code,name) values($1,'B','B') returning id", [shop]);
+    const departmentB = await one("insert into departments(branch_id,code,name) values($1,'B','B') returning id", [branchB]);
+    const department = await one("insert into departments(branch_id,code,name) values($1,'A','A') returning id", [branch]);
+    const position = await one("insert into positions(shop_id,code,name) values($1,'A','A') returning id", [shop]);
+    const employee = await one("insert into employees(employee_code,passport_id,first_name,last_name,hire_date,status,terminated_at) values($1,$1,'Member','History','2097-09-09','terminated','2097-09-20') returning id", [key]);
+    const actor = await one("insert into user_accounts(username,password_hash) values($1,'fixture') returning id", [key]);
+    await client.query("insert into employment_assignments(employee_id,branch_id,department_id,position_id,base_salary,welfare_amount,effective_from,effective_to,is_social_security_member) values($1,$2,$3,$4,'27000.00','0','2097-09-09','2097-09-10',true)", [employee,branch,department,position]);
+    const lastAssignment = await one("insert into employment_assignments(employee_id,branch_id,department_id,position_id,base_salary,welfare_amount,effective_from,effective_to,is_social_security_member) values($1,$2,$3,$4,'27000.00','0','2097-09-11','2097-09-20',false) returning id", [employee,branchB,departmentB,position]);
+    await client.query("insert into branch_schedules(branch_id,work_start_time,effective_from) values($1,'09:00','2097-09-01')", [branch]);
+    await client.query("insert into branch_schedules(branch_id,work_start_time,effective_from) values($1,'09:00','2097-09-01')", [branchB]);
+    await client.query("insert into employee_weekly_holidays(employee_id,weekday,effective_from) values($1,0,'2097-09-01')", [employee]);
+    await client.query("insert into holiday_calendars(shop_id,holiday_date,name) values($1,'2097-09-10','Holiday')", [shop]);
+    await client.query("insert into branch_schedule_overrides(branch_id,schedule_date,is_closed) values($1,'2097-09-10',true),($2,'2097-09-12',true),($1,'2097-09-13',true)", [branch,branchB]);
+    for (const [name,value,unit] of [["ABSENCE_RATE","1","multiplier"],["LATE_RATE","2","currency_per_minute"],["SOCIAL_SECURITY_RATE","0.05","ratio"],["SOCIAL_SECURITY_CAP","750","currency"]]) await client.query("insert into payroll_configurations(shop_id,config_key,numeric_value,unit,effective_from,created_by_user_account_id) values($1,$2,$3,$4,'2097-09-01',$5)", [shop,name,value,unit,actor]);
+    const periodId = await one("insert into payroll_periods(shop_id,period_year,period_month,start_date,end_date,created_by_user_account_id) values($1,2097,9,'2097-09-01','2097-09-30',$2) returning id", [shop,actor]);
+    await client.query("insert into work_day_records(employee_id,branch_id,work_date,status,is_deductible,entry_source) select $1,case when d::date < '2097-09-11' then $2::bigint else $3::bigint end,d::date,'present',false,'manual' from generate_series('2097-09-09'::date,'2097-09-20'::date,'1 day') d where d::date not in ('2097-09-10','2097-09-12','2097-09-15')", [employee,branch,branchB]);
+    const schema = await import("../../db/schema");
+    const { DrizzlePayrollInputProvider, createPayrollRepositorySession } = await import("./payroll.repository");
+    const session = createPayrollRepositorySession(drizzle(client, { schema }));
+    const period = (await session.findPeriod(String(periodId)))!;
+    const loaded = await new DrizzlePayrollInputProvider().load(session, period);
+    expect(loaded.blockers).toEqual([]);
+    const input = loaded.inputs[0]!;
+    expect(input.assignmentId).toBe(String(lastAssignment));
+    expect(input.isSocialSecurityMember).toBe(false);
+    expect(input.workDays.filter(day => day.isSocialSecurityMember)).toHaveLength(1);
+    expect(input.standardWorkDays).toBe("9");
+    expect(input.workdayCalendarEvidence?.find(day => day.date === "2097-09-10")?.reasons).toEqual(["public", "branch_closed"]);
+    expect(input.workdayCalendarEvidence?.find(day => day.date === "2097-09-13")?.working).toBe(true);
+    const calculated = calculatePayroll(input);
+    expect(calculated.totalEarnings).toBe("27000.00");
+    await session.replaceCalculatedRecords(String(periodId), [calculated], String(actor), false);
+    const evidence = await client.query("select quantity from payroll_items where description='Automatic standard workdays' and payroll_record_id in (select id from payroll_records where payroll_period_id=$1)", [periodId]);
+    expect(evidence.rows[0].quantity).toBe("9.00");
+  } finally { await client.query("rollback"); await client.end(); }
+});

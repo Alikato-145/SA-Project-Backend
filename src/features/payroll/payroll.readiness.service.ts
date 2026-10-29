@@ -33,7 +33,7 @@ export const summarizePayrollReadiness=(facts:PayrollReadinessFacts,period:Payro
       if(!assignment)continue;
       const schedule=facts.schedules.some(row=>row.branchId===assignment.branchId&&row.effectiveFrom<=date&&(row.effectiveTo===null||row.effectiveTo>=date));
       if(!schedule)missingSchedule.push(date);
-      for(const key of ["STANDARD_WORK_DAYS","ABSENCE_RATE","LATE_RATE","SOCIAL_SECURITY_RATE","SOCIAL_SECURITY_CAP"])if(!configurationExists(assignment.branchId,key,date))missingConfigs.set(key,[...(missingConfigs.get(key)??[]),date]);
+      for(const key of ["ABSENCE_RATE","LATE_RATE","SOCIAL_SECURITY_RATE","SOCIAL_SECURITY_CAP"])if(!configurationExists(assignment.branchId,key,date))missingConfigs.set(key,[...(missingConfigs.get(key)??[]),date]);
       const weekday=new Date(`${date}T00:00:00Z`).getUTCDay();
       const weekly=facts.weeklyHolidays.some(row=>row.employeeId===employeeId&&row.weekday===weekday&&row.effectiveFrom<=date&&(row.effectiveTo===null||row.effectiveTo>=date));
       const closed=facts.overrides.some(row=>row.branchId===assignment.branchId&&row.date===date&&row.isClosed);
@@ -53,7 +53,7 @@ export const summarizePayrollReadiness=(facts:PayrollReadinessFacts,period:Payro
   check("configuration","ค่าคำนวณที่มีผลในงวด",configIssues,facts.configurations.length>0);
   check("attendance","ข้อมูลลงเวลาครบทุกวันทำงาน",attendanceIssues,facts.attendance.length>0);
   const pending=facts.pending.filter(row=>row.employeeId===null||facts.roster.some(assignment=>assignment.employeeId===row.employeeId&&assignment.effectiveFrom<=row.endDate&&(assignment.effectiveTo===null||assignment.effectiveTo>=row.startDate)));
-  check("approvals","คำขอลา OT เงินทดรอง และรายการปรับปรุง",pending.map(row=>({...(row.employeeId?{employeeId:row.employeeId}:{}),message:`มี ${{leave:"คำขอลา",overtime:"OT",advance:"เงินทดรอง",adjustment:"รายการปรับปรุง"}[row.kind as "leave"] ?? row.kind} รอพิจารณาในช่วง ${row.startDate} ถึง ${row.endDate}`,href:row.kind==="leave"?"/leave":row.kind==="overtime"?"/overtime":row.kind==="adjustment"?"/payroll":"/finance"})),true,true,false,true);
+  check("approvals","คำขอลา OT เงินทดรอง และรายการปรับปรุง",pending.map(row=>({...(row.employeeId?{employeeId:row.employeeId}:{}),message:`${row.employeeId ? `${facts.roster.find(assignment => assignment.employeeId === row.employeeId)?.employeeName ?? `พนักงาน ${row.employeeId}`}: ` : ""}มี ${{leave:"คำขอลา",overtime:"OT",advance:"เงินทดรอง",adjustment:"รายการปรับปรุง"}[row.kind as "leave"] ?? row.kind} รอพิจารณาในช่วง ${row.startDate} ถึง ${row.endDate}`,href:row.kind==="leave"?"/leave":row.kind==="overtime"?"/overtime":row.kind==="adjustment"?"/payroll":"/finance"})),true,true,false,true);
   const bankIssues=employeeIds.filter(id=>!facts.bankEmployeeIds.includes(id)).map(employeeId=>({employeeId,message:`${facts.roster.find(row=>row.employeeId===employeeId)!.employeeName}: ยังไม่มีบัญชีธนาคารหลักครบถ้วน`,href:`/employees/${employeeId}/bank`}));
   check("bank","บัญชีธนาคารสำหรับ CSV โอนเงิน",bankIssues,facts.bankEmployeeIds.length>0,false,true);
   return {checks,employeeCount:employeeIds.length,canLock:period.status!=="locked"&&checks.every(row=>!row.requiredForLock||row.status==="ready"),canExport:period.status==="locked"&&checks.every(row=>!row.requiredForExport||row.status==="ready")};

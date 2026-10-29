@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { AccountStatus, RoleCode, RoleScope } from "../../core/auth/auth.types";
 import { db } from "../../core/db/client";
 import type {
@@ -23,6 +23,7 @@ const isRoleCode = (value: string): value is RoleCode =>
 export interface AuthenticationAccountRecord {
   id: number;
   employeeId: number | null;
+  employeeTerminatedAt?: string | null;
   username: string;
   passwordHash: string;
   status: AccountStatus;
@@ -34,6 +35,7 @@ export interface AuthenticationAccountRecord {
 export interface SafeAccountRecord {
   id: number;
   employeeId: number | null;
+  employeeTerminatedAt?: string | null;
   username: string;
   status: AccountStatus;
   lockedUntil: Date | null;
@@ -66,6 +68,8 @@ export interface SuccessfulLoginUpdate {
   lastLoginAt: Date;
 }
 
+const employeeTerminatedAt = sql<string | null>`(select case when ${employees.status} = 'terminated' then ${employees.terminatedAt} else null end from ${employees} where ${employees.id} = ${userAccounts.employeeId})`;
+
 const authenticationSelection = {
   id: userAccounts.id,
   employeeId: userAccounts.employeeId,
@@ -78,6 +82,7 @@ const authenticationSelection = {
 };
 
 const safeAccountSelection = {
+  employeeTerminatedAt,
   id: userAccounts.id,
   employeeId: userAccounts.employeeId,
   username: userAccounts.username,
@@ -111,7 +116,7 @@ export class UserAccountRepository {
     username: string,
   ): Promise<AuthenticationAccountRecord | null> {
     const [account] = await this.executor
-      .select(authenticationSelection)
+      .select({ ...authenticationSelection, employeeTerminatedAt })
       .from(userAccounts)
       .where(eq(userAccounts.username, username))
       .limit(1);
@@ -124,7 +129,7 @@ export class UserAccountRepository {
     username: string,
   ): Promise<AuthenticationAccountRecord | null> {
     const [account] = await this.executor
-      .select(authenticationSelection)
+      .select({ ...authenticationSelection, employeeTerminatedAt })
       .from(userAccounts)
       .where(eq(userAccounts.username, username))
       .limit(1)
@@ -137,7 +142,7 @@ export class UserAccountRepository {
     accountId: number,
   ): Promise<AuthenticationAccountRecord | null> {
     const [account] = await this.executor
-      .select(authenticationSelection)
+      .select({ ...authenticationSelection, employeeTerminatedAt })
       .from(userAccounts)
       .where(eq(userAccounts.id, accountId))
       .limit(1)

@@ -1,3 +1,4 @@
+import { nextOrganizationId } from "../organization/organization-id";
 import { and, asc, count, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { branches } from "../branch/branch.schema";
@@ -26,7 +27,7 @@ export interface ShopRepositoryPort {
   ): Promise<ShopRecord | null>;
   insert(
     executor: DatabaseExecutor,
-    input: { code: string; name: string },
+    input: { code?: string; name: string },
   ): Promise<ShopRecord>;
   update(
     executor: DatabaseExecutor,
@@ -123,7 +124,8 @@ export const shopRepository: ShopRepositoryPort = {
 
   async insert(executor, input) {
     try {
-      const [row] = await executor.insert(shops).values(input).returning();
+      const id = input.code === undefined ? await nextOrganizationId(executor, "shops") : undefined;
+      const [row] = await executor.insert(shops).values({ ...input, id, code: input.code ?? String(id) }).returning();
       if (!row) throw new Error("Shop insert did not return a row");
       return project(row);
     } catch (error) {

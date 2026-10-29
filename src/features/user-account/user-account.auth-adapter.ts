@@ -35,6 +35,7 @@ export const createAuthenticatedActorLoader = (
       username: account.username,
       status: account.status,
       lockedUntil: account.lockedUntil,
+      ...(account.employeeTerminatedAt === undefined ? {} : { employeeTerminatedAt: account.employeeTerminatedAt }),
       grants: grants.map((grant) => ({
         grantId: String(grant.id),
         roleCode: grant.roleCode,

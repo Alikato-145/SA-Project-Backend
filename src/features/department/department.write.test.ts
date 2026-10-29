@@ -68,7 +68,7 @@ const setup = (options: {
     },
     async insert(_executor, input) {
       repositoryCalls.push({ kind: "insert", value: input });
-      stored = { id: "18", ...input, isActive: true, createdAt: fixedNow, updatedAt: fixedNow };
+      stored = { id: "18", ...input, code: input.code ?? "1", isActive: true, createdAt: fixedNow, updatedAt: fixedNow };
       return stored;
     },
     async update(_executor, id, input) {

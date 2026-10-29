@@ -154,3 +154,13 @@ test("membership counts only covered daily base earnings and freezes last assign
   expect(nonmember.items.some(item => item.itemType === "social_security")).toBe(false);
   expect(calculatePayroll(fixture()).socialSecurityBaseSnapshot).toBe("4000.00");
 });
+
+test("records the automatic monthly divisor and dates as frozen calculation evidence", () => {
+  const input = fixture();
+  input.standardWorkDays = "12";
+  input.workdayCalendarEvidence = [{ date: "2026-09-15", branchId: "2", working: true }, { date: "2026-09-16", branchId: "2", working: false }];
+  const result = calculatePayroll(input);
+  const divisor = result.items.find(item => item.description === "Automatic standard workdays");
+  expect(divisor).toMatchObject({ quantity: "12.00", amount: "0.00" });
+  expect(result.items.filter(item => item.description.startsWith("Workday calendar "))).toHaveLength(2);
+});

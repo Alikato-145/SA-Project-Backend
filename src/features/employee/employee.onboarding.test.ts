@@ -9,9 +9,10 @@ import { toEmployeeOnboardingResponseDto } from "./employee.mapper";
 import { employeeTestActor } from "./employee.test-support";
 import { createEmployeeService } from "./employee.service";
 
-type FailureStage = "assignment" | "bank" | "holiday" | "account" | "audit";
+type FailureStage = "assignment" | "bank" | "holiday" | "account" | "role" | "audit";
 type EmployeeRow = EmployeeWriteInput & {
   id: string;
+  employeeCode: string;
   status: "active";
   terminatedAt: null;
 };
@@ -21,6 +22,7 @@ interface MemoryState {
   banks: string[];
   holidays: string[];
   accounts: string[];
+  grants: string[];
   events: AuditEvent[];
 }
 
@@ -84,6 +86,7 @@ const setup = (failure?: FailureStage) => {
     banks: [],
     holidays: [],
     accounts: [],
+    grants: [],
     events: [],
   };
   const repository: EmployeeWriteRepositoryPort = {
@@ -105,6 +108,7 @@ const setup = (failure?: FailureStage) => {
       const state = executor as unknown as MemoryState;
       const row: EmployeeRow = {
         ...input,
+        employeeCode: input.employeeCode ?? String(state.employees.length + 1),
         id: String(state.employees.length + 1),
         status: "active",
         terminatedAt: null,
@@ -174,6 +178,7 @@ const setup = (failure?: FailureStage) => {
           return { id };
         },
       },
+      role: { async grantRoleInTransaction(executor, command) { fail("role"); (executor as unknown as MemoryState).grants.push(`${command.roleCode}:${command.branchId}:${command.departmentId}`); } },
       account: {
         async createAccountInTransaction(executor) {
           fail("account");
@@ -223,7 +228,7 @@ describe("A3 employee onboarding", () => {
     expect("temporary_password" in response).toBe(false);
   });
 
-  for (const stage of ["assignment", "bank", "holiday", "account", "audit"] as const) {
+  for (const stage of ["assignment", "bank", "holiday", "account", "role", "audit"] as const) {
     test("rolls back every component when " + stage + " fails and records one failed outcome", async () => {
       const { root, service } = setup(stage);
       await expect(service.onboardEmployee(command)).rejects.toThrow();
@@ -261,3 +266,10 @@ for (const field of ["branch", "account", "bank"] as const) {
   expect(root.employees).toHaveLength(0); expect(root.accounts).toHaveLength(0); expect(root.assignments).toHaveLength(0);
  });
 }
+
+test("onboarding assigns a selected initial role in the same transaction", async () => {
+  const { root, service } = setup();
+  const result = await service.onboardEmployee({ ...command, account: { username: "ada.lovelace", roleCode: "SUPERVISOR" } });
+  expect(result.accountId).toBe("13");
+  expect((root as unknown as { grants?: string[] }).grants).toEqual(["SUPERVISOR:10:20"]);
+});

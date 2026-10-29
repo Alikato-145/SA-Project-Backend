@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { countMonthlyWorkDays } from "./calculation/monthly-workdays";
 import { branches } from "../branch/branch.schema";
 import { db } from "../../core/db/client";
 import type { DatabaseExecutor } from "../../core/db/transaction";
@@ -460,14 +461,13 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       const addBlocker = (blocker:PayrollBlocker) => blockers.push({...blocker,employeeName:`${employeeAssignments[0]!.firstName} ${employeeAssignments[0]!.lastName}`,branchId});
       const snapshotDate = assignment.effectiveTo && assignment.effectiveTo < earningEnd ? assignment.effectiveTo : earningEnd;
       const required = await Promise.all([
-        session.resolveConfiguration(period.shopId, branchId, "STANDARD_WORK_DAYS", snapshotDate, options.lockSources),
         session.resolveConfiguration(period.shopId, branchId, "ABSENCE_RATE", snapshotDate, options.lockSources),
         session.resolveConfiguration(period.shopId, branchId, "LATE_RATE", snapshotDate, options.lockSources),
         session.resolveConfiguration(period.shopId, branchId, "SOCIAL_SECURITY_RATE", snapshotDate, options.lockSources),
         session.resolveConfiguration(period.shopId, branchId, "SOCIAL_SECURITY_CAP", snapshotDate, options.lockSources),
       ]);
       if (required.some((value) => value === null)) {
-        const keys=["STANDARD_WORK_DAYS","ABSENCE_RATE","LATE_RATE","SOCIAL_SECURITY_RATE","SOCIAL_SECURITY_CAP"].filter((_key,index)=>required[index]===null);
+        const keys=["ABSENCE_RATE","LATE_RATE","SOCIAL_SECURITY_RATE","SOCIAL_SECURITY_CAP"].filter((_key,index)=>required[index]===null);
         addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, configurationKeys:keys,affectedDates:[snapshotDate],detail: `ยังไม่มีค่าคำนวณ ${keys.join(", ")} ที่มีผลวันที่ ${snapshotDate} ให้เพิ่มค่าของสาขานี้หรือค่ากลางของร้านในส่วนค่าคำนวณ` });
         continue;
       }
@@ -515,18 +515,35 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         employmentEnd > period.endDate ? period.endDate : employmentEnd,
       );
       const activeAssignmentDates = employmentDates.filter((date) => date <= earningEnd);
-      const assignmentGaps = activeAssignmentDates.filter((date) => !payrollEffectiveOn(assignmentRowsOnly, date));
+      const assignmentGaps = employmentDates.filter((date) => !payrollEffectiveOn(assignmentRowsOnly, date));
       if (assignmentGaps.length > 0) {
         addBlocker({ code: "PAYROLL_ASSIGNMENT_MISSING", employeeId, affectedDates: assignmentGaps, detail: `ประวัติการสังกัดขาดช่วงวันที่ ${assignmentGaps[0]} ให้ตรวจประวัติการจ้างในหน้าพนักงาน` });
         continue;
       }
-      const missingSchedule = activeAssignmentDates.filter((date) => {
+      const missingSchedule = employmentDates.filter((date) => {
         const datedAssignment = payrollEffectiveOn(assignmentRowsOnly, date)!;
         return !payrollEffectiveOn(schedules.filter((row) => row.branchId === datedAssignment.branchId), date);
       });
       if (missingSchedule.length > 0) {
         addBlocker({ code: "PAYROLL_ATTENDANCE_INCOMPLETE", employeeId,
           affectedDates: missingSchedule, detail: `ยังไม่มีตารางสาขาที่มีผลวันที่ ${missingSchedule[0]} ให้เพิ่มตารางในหน้าตารางและวันหยุด โดยเริ่มใช้ไม่ช้ากว่าวันนี้` });
+        continue;
+      }
+      const workdayCalendarEvidence = employmentDates.map((date) => {
+        const datedAssignment = payrollEffectiveOn(assignmentRowsOnly, date)!;
+        const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+        const reasons: string[] = [];
+        if (weeklyHolidays.some((row) => row.weekday === weekday && row.effectiveFrom <= date && (row.effectiveTo === null || row.effectiveTo >= date))) reasons.push("weekly");
+        if (publicHolidayDates.has(date)) reasons.push("public");
+        if (scheduleOverrides.some((row) => row.branchId === datedAssignment.branchId && row.scheduleDate === date && row.isClosed)) reasons.push("branch_closed");
+        return { date, branchId: id(datedAssignment.branchId), working: reasons.length === 0, reasons };
+      });
+      const monthlyWorkDays = countMonthlyWorkDays(employmentDates, {
+        weekly: weeklyHolidays, publicDates: [...publicHolidayDates],
+        closedDates: workdayCalendarEvidence.filter((day) => day.reasons.includes("branch_closed")).map((day) => day.date),
+      });
+      if (monthlyWorkDays === 0) {
+        addBlocker({ code: "PAYROLL_ATTENDANCE_INCOMPLETE", employeeId, affectedDates: employmentDates, detail: "ช่วงการจ้างไม่มีวันทำงานมาตรฐาน กรุณาตรวจสอบวันหยุดและตารางสาขา" });
         continue;
       }
       const coveredDates = activeAssignmentDates
@@ -556,23 +573,21 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
           continue;
         }
         const dayBranchId = id(row.branchId);
-        const [standardWorkDays, absenceRate, lateRate] = await Promise.all([
-          session.resolveConfiguration(period.shopId, dayBranchId, "STANDARD_WORK_DAYS", row.workDate, options.lockSources),
+        const [absenceRate, lateRate] = await Promise.all([
           session.resolveConfiguration(period.shopId, dayBranchId, "ABSENCE_RATE", row.workDate, options.lockSources),
           session.resolveConfiguration(period.shopId, dayBranchId, "LATE_RATE", row.workDate, options.lockSources),
         ]);
-        if (!standardWorkDays || !absenceRate || !lateRate) {
-          addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, affectedDates: [row.workDate], configurationKeys: [!standardWorkDays ? "STANDARD_WORK_DAYS" : "", !absenceRate ? "ABSENCE_RATE" : "", !lateRate ? "LATE_RATE" : ""].filter(Boolean), detail: `ค่าคำนวณรายวันไม่ครบวันที่ ${row.workDate} ให้ตรวจช่วงเริ่มและสิ้นสุดของค่าคำนวณ` });
+        if (!absenceRate || !lateRate) {
+          addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, affectedDates: [row.workDate], configurationKeys: [!absenceRate ? "ABSENCE_RATE" : "", !lateRate ? "LATE_RATE" : ""].filter(Boolean), detail: `ค่าคำนวณรายวันไม่ครบวันที่ ${row.workDate} ให้ตรวจช่วงเริ่มและสิ้นสุดของค่าคำนวณ` });
           dailyBlocked = true;
           continue;
         }
-        rememberConfiguration(standardWorkDays, row.workDate);
         rememberConfiguration(absenceRate, row.workDate);
         rememberConfiguration(lateRate, row.workDate);
         dailyInputs.push({ id: id(row.id), date: row.workDate, status: row.status,
           lateMinutes: row.lateMinutes, deductible: row.isDeductible, baseSalary: dayAssignment.baseSalary,
-          isSocialSecurityMember: dayAssignment.isSocialSecurityMember, welfare: dayAssignment.welfareAmount, standardWorkDays: standardWorkDays.numericValue,
-          assignmentId: id(dayAssignment.id), standardWorkDaysConfigurationId: standardWorkDays.id,
+          isSocialSecurityMember: dayAssignment.isSocialSecurityMember, welfare: dayAssignment.welfareAmount, standardWorkDays: String(monthlyWorkDays),
+          assignmentId: id(dayAssignment.id),
           absenceRate: absenceRate.numericValue, lateRate: lateRate.numericValue,
           absenceConfigurationId: absenceRate.id, lateConfigurationId: lateRate.id });
       }
@@ -597,19 +612,15 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         }
         const key = row.overtimeType === "hourly" ? "OT_HOURLY_RATE" : row.overtimeType === "rest_day" ? "OT_REST_DAY_RATE" : "OT_PUBLIC_HOLIDAY_RATE";
         const overtimeBranchId = id(overtimeAssignment.branchId);
-        const [config, overtimeWorkDays] = await Promise.all([
-          session.resolveConfiguration(period.shopId, overtimeBranchId, key, row.overtimeDate, options.lockSources),
-          session.resolveConfiguration(period.shopId, overtimeBranchId, "STANDARD_WORK_DAYS", row.overtimeDate, options.lockSources),
-        ]);
-        if (!config || !overtimeWorkDays) {
+        const config = await session.resolveConfiguration(period.shopId, overtimeBranchId, key, row.overtimeDate, options.lockSources);
+        if (!config) {
           addBlocker({ code: "PAYROLL_CONFIGURATION_MISSING", employeeId, configurationKeys: [key], affectedDates: [row.overtimeDate], detail: `ยังไม่มีค่า ${key} สำหรับ OT วันที่ ${row.overtimeDate}` });
           continue;
         }
         rememberConfiguration(config, row.overtimeDate);
-        rememberConfiguration(overtimeWorkDays, row.overtimeDate);
         overtime.push({ id: id(row.id), date: row.overtimeDate, type: row.overtimeType,
           hours: row.hours, dayUnits: row.dayUnits, rate: config.numericValue, configurationId: config.id,
-          baseSalary: overtimeAssignment.baseSalary, standardWorkDays: overtimeWorkDays.numericValue });
+          baseSalary: overtimeAssignment.baseSalary, standardWorkDays: String(monthlyWorkDays) });
       }
       const advancesQuery = executor.select().from(advanceRequests).where(and(
         eq(advanceRequests.employeeId, assignment.employeeId), eq(advanceRequests.status, "approved"),
@@ -639,10 +650,11 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
       inputs.push({
         employeeId, employeeCode, assignmentId: id(assignment.id), branchId,
         isSocialSecurityMember: assignment.isSocialSecurityMember, baseSalary: assignment.baseSalary, welfare: assignment.welfareAmount,
-        standardWorkDays: required[0]!.numericValue, absenceRate: required[1]!.numericValue,
-        lateRate: required[2]!.numericValue, socialSecurityRate: required[3]!.numericValue,
-        socialSecurityCap: required[4]!.numericValue,
-        socialSecurityRateConfigurationId: required[3]!.id,
+        standardWorkDays: String(monthlyWorkDays), absenceRate: required[0]!.numericValue,
+        lateRate: required[1]!.numericValue, socialSecurityRate: required[2]!.numericValue,
+        socialSecurityCap: required[3]!.numericValue,
+        socialSecurityRateConfigurationId: required[2]!.id,
+        workdayCalendarEvidence,
         configurationEvidence: [...configurationEvidence.values()],
         workDays: dailyInputs,
         approvedLeaveEvidence: leaveEvidence.map(({ day, request }) => ({

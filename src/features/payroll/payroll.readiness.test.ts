@@ -24,3 +24,14 @@ test("employment gaps are shown but dates outside employment are not gaps",()=>{
   const employment=summarizePayrollReadiness(value,periodFixture()).checks.find(row=>row.key==="employment")!;
   expect(employment.status).toBe("invalid");expect(employment.issues[0]!.dates).toEqual(["2026-09-11"]);
 });
+test("pending approvals identify the employee and request type", () => {
+  const value = facts();
+  value.pending = ["leave", "overtime", "advance", "adjustment"].map(kind => ({ kind, employeeId: "10", startDate: "2026-09-01", endDate: "2026-09-01" }));
+  const issues = summarizePayrollReadiness(value, periodFixture()).checks.find(row => row.key === "approvals")!.issues;
+  expect(issues.map(row => row.message)).toEqual([
+    "พนักงานทดสอบ: มี คำขอลา รอพิจารณาในช่วง 2026-09-01 ถึง 2026-09-01",
+    "พนักงานทดสอบ: มี OT รอพิจารณาในช่วง 2026-09-01 ถึง 2026-09-01",
+    "พนักงานทดสอบ: มี เงินทดรอง รอพิจารณาในช่วง 2026-09-01 ถึง 2026-09-01",
+    "พนักงานทดสอบ: มี รายการปรับปรุง รอพิจารณาในช่วง 2026-09-01 ถึง 2026-09-01",
+  ]);
+});

@@ -45,7 +45,7 @@ export interface CreateBranchCommand {
   actor: AuthenticatedActor;
   requestId: string;
   shopId: string;
-  code: unknown;
+  code?: unknown;
   name: unknown;
   address?: unknown;
   timezone?: unknown;
@@ -99,7 +99,7 @@ const snapshot = (record: BranchRecord) =>
 
 const normalizeCreate = (command: CreateBranchCommand) => ({
   shopId: String(parseDecimalBigIntId(command.shopId, "shop_id")),
-  code: parseRequiredTrimmedText(command.code, "code", 30),
+  code: command.code === undefined ? undefined : parseRequiredTrimmedText(command.code, "code", 30),
   name: parseRequiredTrimmedText(command.name, "name", 150),
   address: parseOptionalTrimmedText(command.address, "address", 500) ?? null,
   timezone: parseIanaTimezone(command.timezone, "timezone"),

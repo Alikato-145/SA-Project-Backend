@@ -73,6 +73,7 @@ export interface PayrollCalculationInput {
   socialSecurityRate: string;
   socialSecurityCap: string;
   socialSecurityRateConfigurationId?: string;
+  workdayCalendarEvidence?: readonly { date: string; branchId: string; working: boolean; reasons?: string[] }[];
   configurationEvidence?: readonly {
     id: string;
     key: PayrollConfigurationKey;

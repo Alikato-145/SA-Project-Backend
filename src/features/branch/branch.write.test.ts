@@ -78,6 +78,7 @@ const setup = (options: SetupOptions = {}) => {
       stored = {
         id: "8",
         ...input,
+        code: input.code ?? "1",
         isActive: true,
         createdAt: fixedNow,
         updatedAt: fixedNow,

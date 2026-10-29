@@ -1,3 +1,4 @@
+import { employmentAccessEnded } from "../../core/auth/employment-access";
 import type { UserAccountSessionService } from "./user-account.session-service";
 import { accountAuditSnapshot } from "../../core/audit/audit-redaction";
 import { createActionContext } from "../../core/audit/action-context";
@@ -136,9 +137,10 @@ const displayName = (account: CurrentActorAccountRecord): string =>
 const projectCurrentActor = async (
   accountId: number,
   repository: CurrentActorRepository,
+  now: Date,
 ): Promise<CurrentActorResult | null> => {
   const account = await repository.findCurrentActorAccountById(accountId);
-  if (!account || account.status !== "active") return null;
+  if (!account || account.status !== "active" || employmentAccessEnded(account.employeeTerminatedAt, now)) return null;
 
   const grants = await repository.findActiveGrants(accountId);
   return {
@@ -238,7 +240,7 @@ export const createUserAccountService = (
             const anonymousContext = loginContext(command.requestId, accountId);
             const currentTime = now();
 
-            if (account.status === "disabled") {
+            if (account.status === "disabled" || employmentAccessEnded(account.employeeTerminatedAt, currentTime)) {
               throw new ApplicationError("ACCOUNT_DISABLED");
             }
             if (isAccountTemporarilyLocked(account, currentTime)) {
@@ -300,7 +302,7 @@ export const createUserAccountService = (
             });
             if (!updated) throw new ApplicationError("INTERNAL_ERROR");
 
-            const actor = await projectCurrentActor(account.id, repository);
+            const actor = await projectCurrentActor(account.id, repository, currentTime);
             if (!actor) throw new ApplicationError("INTERNAL_ERROR");
             const token = await dependencies.tokenService.issue(accountId);
             const successContext = loginContext(
@@ -368,6 +370,7 @@ export const createUserAccountService = (
         const actor = await projectCurrentActor(
           accountId,
           dependencies.repository,
+          now(),
         );
         if (!actor) throw new ApplicationError("AUTH_REQUIRED");
         return actor;
@@ -403,7 +406,7 @@ export const createUserAccountService = (
           const repository = dependencies.repositoryFactory(transaction);
           const account =
             await repository.findAuthenticationByIdForUpdate(accountId);
-          if (!account || account.status === "disabled") {
+          if (!account || account.status === "disabled" || employmentAccessEnded(account.employeeTerminatedAt, now())) {
             throw new ApplicationError("AUTH_REQUIRED");
           }
           if (command.newPassword.length < 8) {

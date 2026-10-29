@@ -27,3 +27,7 @@ export interface OnboardingAccountCreationPort {
 export interface OnboardingAssignmentPort { createAssignmentInTransaction(executor: DatabaseExecutor, command: { actor: AuthenticatedActor; employeeId: string; branchId: string; departmentId: string; positionId: string; employmentType: "full_time" | "part_time" | "temporary"; baseSalary: string; welfareAmount: string; isSocialSecurityMember?: boolean; effectiveFrom: string; effectiveTo: string | null }): Promise<{ id: string }> }
 export interface OnboardingBankPort { addBankAccountInTransaction(executor: DatabaseExecutor, command: { employeeId: string; bankCode: string; bankName: string; accountHolderName: string; accountNumber: string; isPrimary: boolean | undefined }): Promise<{ id: string }> }
 export interface OnboardingHolidayPort { addHolidayInTransaction(executor: DatabaseExecutor, command: { employeeId: string; weekday: number; effectiveFrom: string; effectiveTo: string | null }): Promise<{ id: string }> }
+
+export interface OnboardingRolePort {
+  grantRoleInTransaction(executor: DatabaseExecutor, command: { actor: AuthenticatedActor; accountId: string; roleCode: import("../../core/auth/auth.types").RoleCode; branchId: string | null; departmentId: string | null; reason: string; requestId: string }): Promise<unknown>;
+}

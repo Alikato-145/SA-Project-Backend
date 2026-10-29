@@ -142,7 +142,7 @@ export const createPositionService = (
     actor: AuthenticatedActor;
     requestId: string;
     shopId: string;
-    code: unknown;
+    code?: unknown;
     name: unknown;
   }): Promise<PositionRecord> {
     const context = createActionContext({
@@ -155,7 +155,7 @@ export const createPositionService = (
       requireAdministrator(command.actor);
       const input = {
         shopId: String(parseDecimalBigIntId(command.shopId, "shop_id")),
-        code: parseRequiredTrimmedText(command.code, "code", 30),
+        code: command.code === undefined ? undefined : parseRequiredTrimmedText(command.code, "code", 30),
         name: parseRequiredTrimmedText(command.name, "name", 100),
       };
       return mutationRunner(dependencies).transaction(async (executor) => {

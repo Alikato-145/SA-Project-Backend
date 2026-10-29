@@ -57,6 +57,19 @@ beforeAll(async () => {
 });
 afterAll(async () => { if (enabled) await client.end(); });
 
+dbTest("blank ordinary attendance uses the effective schedule and marks its origin", async () => {
+  await client.query("insert into branch_schedule_overrides(branch_id,schedule_date,is_closed,work_start_time,close_time) values($1,$2,false,'10:00','19:00')", [transferred, day(16)]);
+  const blank = { ...body(2), clock_in_at: null, clock_out_at: null };
+  const ordinary = await ok("/work-day-records", blank);
+  expect(ordinary.clock_in_at).toBe(`${day(2)}T02:00:00.000Z`);
+  expect(ordinary.clock_out_at).toBe(`${day(2)}T11:00:00.000Z`);
+  expect(ordinary.note).toContain("เวลาตามตาราง");
+  const override = await ok("/work-day-records", { ...body(16), branch_id: transferred, clock_in_at: null, clock_out_at: null });
+  expect(override.clock_in_at).toBe(`${day(16)}T03:00:00.000Z`);
+  expect(override.clock_out_at).toBe(`${day(16)}T12:00:00.000Z`);
+  expect((await request("/work-day-records", { ...body(17), branch_id: transferred, clock_in_at: null })).status).toBe(422);
+});
+
 dbTest("UC07 own manual create persists historical branch and audit actor; duplicate remains rejected", async () => {
   const created = await ok("/work-day-records", body());
   expect(created).toMatchObject({ employee_id: employee, branch_id: branch, entry_source: "manual", late_minutes: 0 });

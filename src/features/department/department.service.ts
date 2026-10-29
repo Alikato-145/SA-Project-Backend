@@ -129,7 +129,7 @@ export const createDepartmentService = (
     actor: AuthenticatedActor;
     requestId: string;
     branchId: string;
-    code: unknown;
+    code?: unknown;
     name: unknown;
   }): Promise<DepartmentRecord> {
     const context = createActionContext({
@@ -142,7 +142,7 @@ export const createDepartmentService = (
       requireAdministrator(command.actor);
       const input = {
         branchId: String(parseDecimalBigIntId(command.branchId, "branch_id")),
-        code: parseRequiredTrimmedText(command.code, "code", 30),
+        code: command.code === undefined ? undefined : parseRequiredTrimmedText(command.code, "code", 30),
         name: parseRequiredTrimmedText(command.name, "name", 100),
       };
       return requireTransactionRunner(dependencies).transaction(async (executor) => {

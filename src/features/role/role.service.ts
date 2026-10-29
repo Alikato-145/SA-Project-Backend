@@ -56,6 +56,46 @@ const toResult = (row: InsertedRoleGrant, role: RoleRecord): RoleGrantResult => 
   grantedAt: row.grantedAt,
 });
 
+export interface RoleGrantCommand {
+  actor: AuthenticatedActor; accountId: string; roleCode: RoleCode;
+  branchId: string | null; departmentId: string | null; reason: string; requestId: string;
+}
+
+export const grantRoleInTransaction = async (dependencies: RoleServiceDependencies, executor: DatabaseExecutor, command: RoleGrantCommand) => {
+  const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "role.grant.create", target: { tableName: "user_account_roles", recordId: command.accountId } });
+  if (!validId(command.accountId)) throw new ApplicationError("VALIDATION_ERROR");
+  const role = await dependencies.repository.findRoleByCode(executor, command.roleCode);
+  if (!role) throw new ApplicationError("RESOURCE_NOT_FOUND");
+  if (!role.isActive) throw new ApplicationError("STATE_CONFLICT");
+  validateShape(role, command.branchId, command.departmentId);
+
+  const account = await dependencies.repository.findAccount(executor, command.accountId);
+  if (!account) throw new ApplicationError("RESOURCE_NOT_FOUND");
+  const proposal = { roleCode: role.code, scope: role.scope, branchId: command.branchId, departmentId: command.departmentId, roleActive: true };
+  if (!canAssignGrant(command.actor, proposal, account.employeeId ?? undefined)) throw new ApplicationError("FORBIDDEN_SCOPE");
+
+  if (command.branchId !== null && !await dependencies.repository.branchExists(executor, command.branchId)) {
+    throw new ApplicationError("INVALID_ORGANIZATION_RELATION");
+  }
+  if (command.departmentId !== null && !await dependencies.repository.departmentBelongsToBranch(executor, command.departmentId, command.branchId!)) {
+    throw new ApplicationError("INVALID_ORGANIZATION_RELATION");
+  }
+  if (await dependencies.repository.findDuplicateGrant(executor, { accountId: command.accountId, roleId: role.id, branchId: command.branchId, departmentId: command.departmentId })) {
+    throw new ApplicationError("DUPLICATE_ROLE_GRANT");
+  }
+
+  const inserted = await dependencies.repository.insertGrant(executor, {
+    userAccountId: command.accountId, roleId: role.id, branchId: command.branchId,
+    departmentId: command.departmentId, grantedByUserAccountId: command.actor.accountId,
+  });
+  const result = toResult(inserted, role);
+  const receipt = await dependencies.audit.domain.record(executor, context, { newData: roleGrantAuditSnapshot({
+    id: inserted.id, user_account_id: inserted.userAccountId, role_id: inserted.roleId,
+    branch_id: inserted.branchId, department_id: inserted.departmentId, granted_at: inserted.grantedAt,
+  }) });
+  return dependencies.audit.domain.complete(result, receipt);
+};
+
 export const createRoleService = (dependencies: RoleServiceDependencies) => ({
   async listRoles(command: { actor: AuthenticatedActor; requestId: string }): Promise<RoleRecord[]> {
     const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "role.catalog.read", target: { tableName: "roles", recordId: "collection" } });
@@ -65,49 +105,9 @@ export const createRoleService = (dependencies: RoleServiceDependencies) => ({
     });
   },
 
-  async grantRole(command: {
-    actor: AuthenticatedActor;
-    accountId: string;
-    roleCode: RoleCode;
-    branchId: string | null;
-    departmentId: string | null;
-    reason: string;
-    requestId: string;
-  }): Promise<RoleGrantResult> {
+  async grantRole(command: RoleGrantCommand): Promise<RoleGrantResult> {
     const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "role.grant.create", target: { tableName: "user_account_roles", recordId: command.accountId } });
-    return dependencies.audit.actions.observeMutation(context, () => dependencies.transactionRunner.transaction(async (executor) => {
-      if (!validId(command.accountId)) throw new ApplicationError("VALIDATION_ERROR");
-      const role = await dependencies.repository.findRoleByCode(executor, command.roleCode);
-      if (!role) throw new ApplicationError("RESOURCE_NOT_FOUND");
-      if (!role.isActive) throw new ApplicationError("STATE_CONFLICT");
-      validateShape(role, command.branchId, command.departmentId);
-
-      const account = await dependencies.repository.findAccount(executor, command.accountId);
-      if (!account) throw new ApplicationError("RESOURCE_NOT_FOUND");
-      const proposal = { roleCode: role.code, scope: role.scope, branchId: command.branchId, departmentId: command.departmentId, roleActive: true };
-      if (!canAssignGrant(command.actor, proposal, account.employeeId ?? undefined)) throw new ApplicationError("FORBIDDEN_SCOPE");
-
-      if (command.branchId !== null && !await dependencies.repository.branchExists(executor, command.branchId)) {
-        throw new ApplicationError("INVALID_ORGANIZATION_RELATION");
-      }
-      if (command.departmentId !== null && !await dependencies.repository.departmentBelongsToBranch(executor, command.departmentId, command.branchId!)) {
-        throw new ApplicationError("INVALID_ORGANIZATION_RELATION");
-      }
-      if (await dependencies.repository.findDuplicateGrant(executor, { accountId: command.accountId, roleId: role.id, branchId: command.branchId, departmentId: command.departmentId })) {
-        throw new ApplicationError("DUPLICATE_ROLE_GRANT");
-      }
-
-      const inserted = await dependencies.repository.insertGrant(executor, {
-        userAccountId: command.accountId, roleId: role.id, branchId: command.branchId,
-        departmentId: command.departmentId, grantedByUserAccountId: command.actor.accountId,
-      });
-      const result = toResult(inserted, role);
-      const receipt = await dependencies.audit.domain.record(executor, context, { newData: roleGrantAuditSnapshot({
-        id: inserted.id, user_account_id: inserted.userAccountId, role_id: inserted.roleId,
-        branch_id: inserted.branchId, department_id: inserted.departmentId, granted_at: inserted.grantedAt,
-      }) });
-      return dependencies.audit.domain.complete(result, receipt);
-    }));
+    return dependencies.audit.actions.observeMutation(context, () => dependencies.transactionRunner.transaction(executor => grantRoleInTransaction(dependencies, executor, command)));
   },
 
   async revokeRole(command: { actor: AuthenticatedActor; accountId: string; grantId: string; reason: string; requestId: string }): Promise<void> {

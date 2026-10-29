@@ -87,15 +87,15 @@ databaseTest("date-20 projection is conservative and failed final lock rolls bac
     await successfulService.decidePayrollAdjustment(payrollActor, current.id, "approved", "approve-current");
     const previewOne = await successfulService.previewPayrollPeriod(payrollActor, String(nextPeriodId), "preview-current-1");
     const previewTwo = await successfulService.previewPayrollPeriod(payrollActor, String(nextPeriodId), "preview-current-2");
-    expect(previewOne.records[0]!.netPay).toBe("1025.01");
-    expect(previewTwo.records[0]!.netPay).toBe("1025.01");
+    expect(previewOne.records[0]!.netPay).toBe("30025.01");
+    expect(previewTwo.records[0]!.netPay).toBe("30025.01");
     expect(previewTwo.records[0]!.items.filter(item => item.sourceTable === "payroll_adjustments")).toHaveLength(1);
     await successfulService.lockPayrollPeriod(payrollActor, String(nextPeriodId), "lock-current");
     expect((await session.findAdjustment(current.id))!.status).toBe("applied");
     expect((await client.query("select count(*)::int as n from payroll_items where source_table='payroll_adjustments' and source_id=$1", [current.id])).rows[0].n).toBe(1);
     const negativePeriodId = await one("insert into payroll_periods(shop_id,period_year,period_month,start_date,end_date,created_by_user_account_id) values($1,2098,11,'2098-11-01','2098-11-01',$2) returning id", [shop, actor]);
     await client.query("insert into work_day_records(employee_id,branch_id,work_date,status,is_deductible,entry_source) values($1,$2,'2098-11-01','present',false,'manual')", [employee, branch]);
-    const negativeAdjustment = await successfulService.requestPayrollAdjustment({ actor: payrollActor, requestId: "current-deduction", employeeId: String(employee), targetPeriodId: String(negativePeriodId), direction: "deduction", amount: "2000.00", reason: "Current deduction" });
+    const negativeAdjustment = await successfulService.requestPayrollAdjustment({ actor: payrollActor, requestId: "current-deduction", employeeId: String(employee), targetPeriodId: String(negativePeriodId), direction: "deduction", amount: "31000.00", reason: "Current deduction" });
     await successfulService.decidePayrollAdjustment(payrollActor, negativeAdjustment.id, "approved", "approve-deduction");
     const negativePreview = await successfulService.previewPayrollPeriod(payrollActor, String(negativePeriodId), "preview-negative");
     expect(negativePreview.records[0]!.netPay).toBe("-1000.00");

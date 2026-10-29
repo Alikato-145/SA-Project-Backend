@@ -210,3 +210,10 @@ describe("authenticated request plugin", () => {
     expect(allowed.status).toBe(200);
   });
 });
+
+test("blocks linked employees from the termination date in Bangkok, including existing sessions", () => {
+  const { assertUsableAccount } = require("./auth.plugin");
+  const record = { ...activeRecord(), employeeTerminatedAt: "2026-10-29" };
+  expect(() => assertUsableAccount(record, new Date("2026-10-28T16:59:59Z"))).not.toThrow();
+  expect(() => assertUsableAccount(record, new Date("2026-10-28T17:00:00Z"))).toThrow(expect.objectContaining({ code: "ACCOUNT_DISABLED" }));
+});

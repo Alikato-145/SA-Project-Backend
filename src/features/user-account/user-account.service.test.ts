@@ -114,6 +114,7 @@ class MemoryUserAccountRepository {
       username: this.account.username,
       status: this.account.status,
       lockedUntil: this.account.lockedUntil,
+      employeeTerminatedAt: this.account.employeeTerminatedAt ?? null,
       employeeCode: this.account.employeeId === null ? null : "EMP-045",
       employeeFirstName: this.account.employeeId === null ? null : "Mana",
       employeeLastName: this.account.employeeId === null ? null : "Example",
@@ -512,4 +513,13 @@ describe("user account authentication service", () => {
       "authentication.password.change.failed",
     ]);
   });
+});
+
+test("login, current session and password change enforce the linked termination date", async () => {
+  const future = fixture({ employeeTerminatedAt: "2026-09-23" });
+  await expect(future.service.login({ username: "mana", password: "correct", requestId: "future" })).resolves.toBeDefined();
+  const ended = fixture({ employeeTerminatedAt: "2026-09-22" });
+  await expect(ended.service.login({ username: "mana", password: "correct", requestId: "ended" })).rejects.toMatchObject({ code: "ACCOUNT_DISABLED" });
+  await expect(ended.service.getCurrentActor({ token: "token-12", requestId: "current" })).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
+  await expect(ended.service.changePassword({ token: "token-12", currentPassword: "correct-current", newPassword: "new-password", requestId: "password" })).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
 });

@@ -24,6 +24,15 @@ const line = (item: PayrollSourceItem): PayrollSourceItem => {
 export const calculatePayroll = (input: PayrollCalculationInput): PayrollCalculatedRecord => {
   const items: PayrollSourceItem[] = [];
   let earnedBase = 0n;
+  if (input.workdayCalendarEvidence) {
+    items.push(line({ itemType: "other", direction: "earning", description: "Automatic standard workdays",
+      quantity: formatMoney(quantity(input.standardWorkDays)), rate: null, amount: "0.00", payrollConfigurationId: null,
+      sourceTable: null, sourceId: null, occurredOn: null }));
+    for (const day of input.workdayCalendarEvidence) items.push(line({ itemType: "other", direction: "earning",
+      description: `Workday calendar ${day.date}; branch=${day.branchId}; working=${day.working}; reasons=${(day.reasons ?? []).join(",")}`,
+      quantity: null, rate: null, amount: "0.00", payrollConfigurationId: null,
+      sourceTable: null, sourceId: null, occurredOn: day.date }));
+  }
   for (const evidence of input.configurationEvidence ?? []) items.push(line({
     itemType: "other", direction: "earning", description: `Configuration ${evidence.key}`,
     quantity: null, rate: evidence.value, amount: "0.00", payrollConfigurationId: evidence.id,
