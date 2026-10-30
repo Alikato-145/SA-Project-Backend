@@ -20,6 +20,7 @@ export const employees = pgTable(
     firstName: varchar("first_name", { length: 100 }).notNull(),
     lastName: varchar("last_name", { length: 100 }).notNull(),
     paymentMethod: paymentMethodEnum("payment_method").notNull().default("cash"),
+    paymentCategory: varchar("payment_category", { length: 20 }).$type<"cash" | "transfer" | "social_security">(),
     promptpayPhone: varchar("promptpay_phone", { length: 10 }),
     phone: varchar("phone", { length: 30 }),
     personalEmail: varchar("personal_email", { length: 255 }),
@@ -32,6 +33,7 @@ export const employees = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("chk_employee_payment_category", sql`${table.paymentCategory} is null or ${table.paymentCategory} in ('cash', 'transfer', 'social_security')`),
     check("chk_employee_promptpay_phone", sql`${table.promptpayPhone} is null or ${table.promptpayPhone} ~ '^0[689][0-9]{8}$'`),
     check(
       "chk_employee_identity",

@@ -56,13 +56,13 @@ databaseTest("concurrent destination saves audit the preceding committed destina
     expect(secondRead).toBe(false);
     // GET remains an ordinary nonblocking read while A holds the mutation lock.
     const visible = await employeePaymentRepository.findPaymentDestination(drizzle(control) as unknown as DatabaseExecutor, employeeId);
-    expect(visible).toEqual({ paymentMethod: "cash", promptpayPhone: null });
+    expect(visible).toEqual({ paymentMethod: "cash", promptpayPhone: null, paymentCategory: null });
     resumeFirst.open(); await a; firstCommitted.open(); await b;
     const audits = (await control.query("select old_data,new_data from audit_logs where request_id in ($1,$2) and action='employee.payment_destination.update.succeeded' order by id", [`${key}-A`, `${key}-B`])).rows;
     expect(audits).toHaveLength(2);
-    expect(audits[0]).toEqual({ old_data: { payment_method: "cash", has_promptpay_phone: false }, new_data: { payment_method: "transfer", has_promptpay_phone: true } });
+    expect(audits[0]).toEqual({ old_data: { payment_method: "cash", payment_category: null, has_promptpay_phone: false }, new_data: { payment_method: "transfer", payment_category: null, has_promptpay_phone: true } });
     expect(audits[1].old_data).toEqual(audits[0].new_data);
-    expect(audits[1].new_data).toEqual({ payment_method: "cash", has_promptpay_phone: false });
+    expect(audits[1].new_data).toEqual({ payment_method: "cash", payment_category: null, has_promptpay_phone: false });
     expect((await control.query("select payment_method,promptpay_phone from employees where id=$1", [employeeId])).rows[0]).toEqual({ payment_method: "cash", promptpay_phone: null });
   } finally {
     resumeFirst.open(); firstCommitted.open();

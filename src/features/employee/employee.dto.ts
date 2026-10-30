@@ -151,5 +151,5 @@ export const parseEmployeeOnboarding = (body: EmployeeOnboardingBodyDto) => {
   return { employee: parseEmployeeCreate(body.employee), assignment: parseAssignmentBody(body.assignment), bankAccount: body.bank_account === undefined ? undefined : parseBankCreate(body.bank_account), weeklyHolidays: (body.weekly_holidays ?? []).map(parseHolidayCreate), account };
 };
 
-export interface EmployeePaymentDestinationBodyDto { payment_method: "cash" | "transfer"; promptpay_phone: string | null }
-export interface EmployeePaymentDestinationResponseDto { payment_method: "cash" | "transfer"; promptpay_phone: string | null }
+export interface EmployeePaymentDestinationBodyDto { payment_method: "cash" | "transfer"; promptpay_phone: string | null; payment_category?: "cash" | "transfer" | "social_security" }
+export interface EmployeePaymentDestinationResponseDto { payment_method: "cash" | "transfer"; promptpay_phone: string | null; payment_category: "cash" | "transfer" | "social_security" | null }

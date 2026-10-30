@@ -89,16 +89,20 @@ export const createEmployeeService = (dependencies: EmployeeServiceDependencies)
       const id = String(parseEmployeeId(command.employeeId, "employee_id"));
       const context = createActionContext({ requestId: command.requestId, actor: command.actor, actionBase: "employee.payment_destination.update", target: { tableName: "employees", recordId: id } });
       return dependencies.actions.observeMutation(context, () => {
-        requireAdministrator(command.actor);
+        if (!canAdministerEmployees(command.actor) && !(command.actor.employeeId === id && command.actor.grants.some(grant => parseActiveGrant(grant) !== null))) throw new ApplicationError("FORBIDDEN_SCOPE");
         if (!["cash", "transfer"].includes(command.paymentMethod)) throw new ApplicationError("VALIDATION_ERROR");
-        const input = { paymentMethod: command.paymentMethod, promptpayPhone: normalizePromptpayPhone(command.promptpayPhone) };
+        if (command.paymentCategory && (command.paymentCategory === "cash" ? command.paymentMethod !== "cash" : command.paymentMethod !== "transfer")) throw new ApplicationError("VALIDATION_ERROR");
+        const input = { paymentMethod: command.paymentMethod, promptpayPhone: normalizePromptpayPhone(command.promptpayPhone), ...(command.paymentCategory !== undefined ? { paymentCategory: command.paymentCategory } : {}) };
         const writes = requireWrites(dependencies);
         return writes.runner.transaction(async executor => {
           const current = await paymentRepository.findPaymentDestination(executor, id, true);
           if (!current) throw new ApplicationError("RESOURCE_NOT_FOUND");
-          const updated = await paymentRepository.updatePaymentDestination(executor, id, input);
+          const resolved = command.paymentCategory === undefined && current.paymentCategory && current.paymentMethod !== input.paymentMethod
+            ? { ...input, paymentCategory: input.paymentMethod }
+            : input;
+          const updated = await paymentRepository.updatePaymentDestination(executor, id, resolved);
           if (!updated) throw new ApplicationError("RESOURCE_NOT_FOUND");
-          const safe = (value: EmployeePaymentDestination) => ({ payment_method: value.paymentMethod, has_promptpay_phone: value.promptpayPhone !== null });
+          const safe = (value: EmployeePaymentDestination) => ({ payment_method: value.paymentMethod, payment_category: value.paymentCategory ?? null, has_promptpay_phone: value.promptpayPhone !== null });
           const receipt = await writes.domain.record(executor, context, { oldData: safe(current), newData: safe(updated) });
           return writes.domain.complete(updated, receipt);
         });

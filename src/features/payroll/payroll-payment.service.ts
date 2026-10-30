@@ -49,13 +49,13 @@ export const createPayrollPaymentService = (d: PayrollPaymentDependencies) => {
     const rows = await d.repository.records(e, c.periodId, c.branchId);
     const result: PaymentGroupRow[] = [];
     for (const row of rows) {
-      const destination = row.payment ? { paymentMethod: row.payment.paymentMethod, promptpayPhone: row.payment.promptpayPhoneSnapshot } : await d.employee.getPaymentDestinationInTransaction(e, { ...c, employeeId: row.employeeId });
-      const group = row.member ? "social_security" : destination.paymentMethod;
+      const destination: EmployeePaymentDestination = row.payment ? { paymentMethod: row.payment.paymentMethod, promptpayPhone: row.payment.promptpayPhoneSnapshot } : await d.employee.getPaymentDestinationInTransaction(e, { ...c, employeeId: row.employeeId });
+      const group = row.payment?.paymentCategorySnapshot ?? destination.paymentCategory ?? (row.member ? "social_security" : destination.paymentMethod);
       let missingDestination: string | null = null;
       if (!row.payment && row.amount !== "0.00" && destination.paymentMethod === "transfer") {
-        if (!row.member && !destination.promptpayPhone)
+        if (group === "transfer" && !destination.promptpayPhone)
           missingDestination = "ลงทะเบียนเบอร์รับ PromptPay ที่หน้าพนักงาน";
-        if (row.member && !(await d.bank.getPrimaryPaymentSnapshot(e, { ...c, employeeId: row.employeeId })))
+        if (group === "social_security" && !(await d.bank.getPrimaryPaymentSnapshot(e, { ...c, employeeId: row.employeeId })))
           missingDestination = "เพิ่มบัญชีธนาคารหลักที่ใช้งานได้ที่หน้าพนักงาน";
       }
       result.push({ ...row, branchId: row.payment?.branchIdSnapshot ?? row.branchId, amount: row.payment?.amount ?? row.amount, group, paymentMethod: destination.paymentMethod, missingDestination });
@@ -139,9 +139,9 @@ export const createPayrollPaymentService = (d: PayrollPaymentDependencies) => {
           const destination = await d.employee.getPaymentDestinationInTransaction(e, { ...c, employeeId: row.employeeId });
           const bank = destination.paymentMethod === "transfer" ? await d.bank.getPrimaryPaymentSnapshot(e, { ...c, employeeId: row.employeeId }) : null;
           // Reads lock recipient rows through insertion; a later edit cannot change this snapshot.
-          if (destination.paymentMethod === "transfer" && ((row.member && !bank) || (!row.member && !destination.promptpayPhone)))
+          if (destination.paymentMethod === "transfer" && ((row.group === "social_security" && !bank) || (row.group === "transfer" && !destination.promptpayPhone)))
             throw new ApplicationError("PAYMENT_DESTINATION_REQUIRED", { fieldErrors: { [`employee_${row.employeeId}`]: [`${row.employeeCode}: ตรวจสอบปลายทางรับเงินที่หน้าพนักงาน`] } });
-          inserts.push({ payrollRecordId: row.recordId, branchIdSnapshot: row.branchId, paymentMethod: destination.paymentMethod, amount: row.amount, preparedByUserAccountId: Number(c.actor.accountId), promptpayPhoneSnapshot: destination.paymentMethod === "transfer" ? destination.promptpayPhone : null, employeeBankAccountId: bank ? Number(bank.id) : null, bankCodeSnapshot: bank?.bankCode ?? null, accountHolderNameSnapshot: bank?.accountHolderName ?? null, accountNumberCiphertextSnapshot: bank?.accountNumberCiphertext ?? null, accountNumberLast4Snapshot: bank?.accountNumberLast4 ?? null });
+          inserts.push({ payrollRecordId: row.recordId, branchIdSnapshot: row.branchId, paymentMethod: destination.paymentMethod, paymentCategorySnapshot: destination.paymentCategory ?? null, amount: row.amount, preparedByUserAccountId: Number(c.actor.accountId), promptpayPhoneSnapshot: destination.paymentMethod === "transfer" ? destination.promptpayPhone : null, employeeBankAccountId: bank ? Number(bank.id) : null, bankCodeSnapshot: bank?.bankCode ?? null, accountHolderNameSnapshot: bank?.accountHolderName ?? null, accountNumberCiphertextSnapshot: bank?.accountNumberCiphertext ?? null, accountNumberLast4Snapshot: bank?.accountNumberLast4 ?? null });
         }
         await d.repository.insert(e, inserts);
         const receipt = await d.domain.record(e, ctx, { newData: { period_id: c.periodId, branch_id: c.branchId ?? null, prepared_count: inserts.length, payroll_record_ids: inserts.map(r => String(r.payrollRecordId)) } });
@@ -158,7 +158,7 @@ export const createPayrollPaymentService = (d: PayrollPaymentDependencies) => {
         const row = await d.repository.find(d.rootExecutor, c.paymentId), p = row?.payment;
         if (!row || !p)
           throw new ApplicationError("RESOURCE_NOT_FOUND");
-        if (row.member || p.status !== "prepared" || p.paymentMethod !== "transfer" || !p.promptpayPhoneSnapshot)
+        if ((p.paymentCategorySnapshot ?? (row.member ? "social_security" : p.paymentMethod)) !== "transfer" || p.status !== "prepared" || p.paymentMethod !== "transfer" || !p.promptpayPhoneSnapshot)
           throw new ApplicationError("PAYMENT_QR_UNAVAILABLE");
         return { phone: p.promptpayPhoneSnapshot, amount: p.amount, payload: promptpayPayload(p.promptpayPhoneSnapshot, p.amount) };
       });

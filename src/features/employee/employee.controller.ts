@@ -10,7 +10,7 @@ export const createEmployeeController = (service: EmployeeService) => ({
     return { data: toPaymentDestinationDto(await service.getPaymentDestination(input)), request_id: input.requestId };
   },
   async updatePaymentDestination(input: { actor: AuthenticatedActor; requestId: string; employeeId: string; body: EmployeePaymentDestinationBodyDto }) {
-    return { data: toPaymentDestinationDto(await service.updatePaymentDestination({ actor: input.actor, requestId: input.requestId, employeeId: input.employeeId, paymentMethod: input.body.payment_method, promptpayPhone: input.body.promptpay_phone })), request_id: input.requestId };
+    return { data: toPaymentDestinationDto(await service.updatePaymentDestination({ actor: input.actor, requestId: input.requestId, employeeId: input.employeeId, paymentMethod: input.body.payment_method, promptpayPhone: input.body.promptpay_phone, paymentCategory: input.body.payment_category })), request_id: input.requestId };
   },
   async list(input: { actor: AuthenticatedActor; requestId: string; query: EmployeeListQueryDto }) {
     const page = await service.listEmployees({

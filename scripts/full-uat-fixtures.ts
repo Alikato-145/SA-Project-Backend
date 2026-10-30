@@ -15,9 +15,9 @@ try {
   const client = await pool.connect();
   try {
     await client.query("begin");
-    for (const lifecycle of [false, true]) {
-      const fixture = await seedPaymentFixture(client, lifecycle);
-      writeFileSync(`${directory}/${lifecycle ? "lifecycle" : "payments"}.json`, JSON.stringify(fixture, null, 2));
+    for (const name of ["payments", "lifecycle", "payment-categories"] as const) {
+      const fixture = await seedPaymentFixture(client, name === "lifecycle");
+      writeFileSync(`${directory}/${name}.json`, JSON.stringify(fixture, null, 2));
     }
     await client.query("commit");
   } catch (error) { await client.query("rollback"); throw error; }

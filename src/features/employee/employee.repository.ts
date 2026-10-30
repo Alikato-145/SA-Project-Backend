@@ -176,12 +176,12 @@ export interface EmployeePaymentRepositoryPort {
 }
 export const employeePaymentRepository: EmployeePaymentRepositoryPort = {
   async findPaymentDestination(executor, employeeId, forUpdate = false) {
-    const query = executor.select({ paymentMethod: employees.paymentMethod, promptpayPhone: employees.promptpayPhone }).from(employees).where(eq(employees.id, numberId(employeeId))).limit(1);
+    const query = executor.select({ paymentMethod: employees.paymentMethod, promptpayPhone: employees.promptpayPhone, paymentCategory: employees.paymentCategory }).from(employees).where(eq(employees.id, numberId(employeeId))).limit(1);
     const [row] = await (forUpdate ? query.for("update") : query);
     return row ?? null;
   },
   async updatePaymentDestination(executor, employeeId, input) {
-    const [row] = await executor.update(employees).set({ ...input, updatedAt: new Date() }).where(eq(employees.id, numberId(employeeId))).returning({ paymentMethod: employees.paymentMethod, promptpayPhone: employees.promptpayPhone });
+    const [row] = await executor.update(employees).set({ ...input, updatedAt: new Date() }).where(eq(employees.id, numberId(employeeId))).returning({ paymentMethod: employees.paymentMethod, promptpayPhone: employees.promptpayPhone, paymentCategory: employees.paymentCategory });
     return row ?? null;
   },
 };

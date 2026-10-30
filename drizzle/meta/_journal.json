@@ -50,6 +50,13 @@
       "when": 1792955250575,
       "tag": "0006_advance_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793330380951,
+      "tag": "0007_payment_category",
+      "breakpoints": true
     }
   ]
 }

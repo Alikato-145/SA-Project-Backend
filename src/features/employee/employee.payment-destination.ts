@@ -3,6 +3,7 @@ import { ApplicationError } from "../../core/errors/application.error";
 export interface EmployeePaymentDestination {
   paymentMethod: "cash" | "transfer";
   promptpayPhone: string | null;
+  paymentCategory?: "cash" | "transfer" | "social_security" | null;
 }
 
 export const normalizePromptpayPhone = (value: string | null): string | null => {

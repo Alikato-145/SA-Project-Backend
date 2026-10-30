@@ -14,5 +14,5 @@ export const toPayrollPaymentResponseDto = (r: PaymentGroupRow) => ({
   group: r.group, payment_method: r.paymentMethod, amount: r.amount, status: r.amount === "0.00" ? "zero" : r.payment?.status ?? "unprepared", missing_destination: r.missingDestination,
   payment: r.payment ? toPaymentLifecycleDto(r.payment) : null,
   payment_history: (r.paymentHistory ?? []).filter(p => p.status === "cancelled").map(toPaymentLifecycleDto),
-  qr_available: !r.member && r.payment?.status === "prepared" && r.payment.paymentMethod === "transfer" && !!r.payment.promptpayPhoneSnapshot,
+  qr_available: r.group === "transfer" && r.payment?.status === "prepared" && r.payment.paymentMethod === "transfer" && !!r.payment.promptpayPhoneSnapshot,
 });
