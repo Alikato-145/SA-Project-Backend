@@ -3,6 +3,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { payrollPeriods, payrollRecords, payrollItems } from "../payroll/payroll.schema";
 import { employees } from "../employee/employee.schema";
+import { employeeBankAccounts } from "../employee-bank-account/employee-bank-account.schema";
 import { payrollPayments } from "../payroll/payroll-payment.schema";
 import { employmentAssignments } from "../employment-assignment/employment-assignment.schema";
 import { branches } from "../branch/branch.schema";
@@ -16,6 +17,10 @@ const id = (value: string) => Number(value);
 import type { ReportFilters,ReportKind } from "./report.types";
 const assignmentMatch=(executor:DatabaseExecutor,shopId:number,filters:ReportFilters,employee:AnyPgColumn,date:AnyPgColumn,snapshotBranch?:AnyPgColumn)=>exists(executor.select({id:employmentAssignments.id}).from(employmentAssignments).innerJoin(branches,eq(branches.id,employmentAssignments.branchId)).where(and(eq(employmentAssignments.employeeId,employee),eq(branches.shopId,shopId),eq(employmentAssignments.isPrimary,true),lte(employmentAssignments.effectiveFrom,date),or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,date)),snapshotBranch ? eq(branches.id,snapshotBranch):undefined,filters.branchId ? eq(branches.id,id(filters.branchId)):undefined,filters.departmentId ? eq(employmentAssignments.departmentId,id(filters.departmentId)):undefined)));
 export const reportRepository = {
+  async findPrimaryBank(executor:DatabaseExecutor,employeeId:number) {
+    const rows=await executor.select({bankCode:employeeBankAccounts.bankCode,accountHolder:employeeBankAccounts.accountHolderName,accountCiphertext:employeeBankAccounts.accountNumberCiphertext}).from(employeeBankAccounts).where(and(eq(employeeBankAccounts.employeeId,employeeId),eq(employeeBankAccounts.isActive,true),eq(employeeBankAccounts.isPrimary,true))).limit(1);
+    return rows[0] ?? null;
+  },
   async findBranch(executor:DatabaseExecutor,branchId:string) {return executor.query.branches.findFirst({where:eq(branches.id,id(branchId))});},
   async findDepartment(executor:DatabaseExecutor,departmentId:string) {return executor.query.departments.findFirst({where:eq(departments.id,id(departmentId))});},
   async findPeriod(executor:DatabaseExecutor,periodId:string) { return executor.query.payrollPeriods.findFirst({where:eq(payrollPeriods.id,id(periodId))}); },

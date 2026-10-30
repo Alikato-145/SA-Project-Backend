@@ -54,6 +54,14 @@ export const createReportService = (dependencies: { rootExecutor: DatabaseExecut
       return {rows:rows.slice((page-1)*pageSize,page*pageSize),total:rows.length,page,pageSize};
     });
   },
+  async employeeSalaryExport(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}) {
+    const context=createActionContext({actor,requestId,actionBase:"report.employee-salary.export",target:{tableName:"payroll_periods",recordId:periodId}});
+    return dependencies.actions.observeRead(context,async()=>{
+      const loaded=await readPeriod(actor,periodId,filters);
+      const rows=await reportRepository.details(dependencies.rootExecutor,loaded.period,"payroll",loaded.filters);
+      return csv([["employee_code","employee_name","net_pay"],...rows.map(row=>[row.employeeCode,`${row.firstName} ${row.lastName}`,row.amount ?? "0.00"])]);
+    });
+  },
   async salaryPayable(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}):Promise<SalaryPayable> {
     const context=createActionContext({actor,requestId,actionBase:"report.salary-payable.read",target:{tableName:"payroll_periods",recordId:periodId}});
     return dependencies.actions.observeRead(context,async()=>{
@@ -66,6 +74,18 @@ export const createReportService = (dependencies: { rootExecutor: DatabaseExecut
       };
       const branchIds=[...new Set(rows.map(row=>row.branchId))];
       return {period:{id:loaded.period.id,startDate:loaded.period.startDate,endDate:loaded.period.endDate},filters:loaded.filters,branches:branchIds.map(branchId=>{const selected=safeRows.filter((_,index)=>rows[index]!.branchId===branchId);return{branchId,branchName:rows.find(row=>row.branchId===branchId)!.branchName,rows:selected,totals:totals(selected)};}),totals:totals(safeRows)};
+    });
+  },
+  async periodBankTransfer(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}) {
+    const context=createActionContext({actor,requestId,actionBase:"report.period-bank-transfer.export",target:{tableName:"payroll_periods",recordId:periodId}});
+    return dependencies.actions.observeRead(context,async()=>{
+      const loaded=await readLockedPeriod(actor,periodId,filters);
+      const rows=(await reportRepository.lockedRows(dependencies.rootExecutor,periodId,loaded.filters)).filter(row=>money(row.netPay)>0n);
+      const accounts=await Promise.all(rows.map(row=>reportRepository.findPrimaryBank(dependencies.rootExecutor,row.employeeId)));
+      const missing=rows.filter((_,index)=>!accounts[index]);
+      if(missing.length)throw new ApplicationError("VALIDATION_ERROR",{publicMessage:`ยังไม่มีบัญชีธนาคารหลัก: ${missing.map(row=>row.employeeCode).join(", ")}`});
+      const body=await Promise.all(rows.map(async(row,index)=>{const bank=accounts[index]!;return [bank.bankCode,await dependencies.cipher.decrypt(bank.accountCiphertext),bank.accountHolder,row.netPay];}));
+      return csv([["bank_code","account_number","account_holder","net_pay"],...body]);
     });
   },
   async bankTransfer(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}) {
