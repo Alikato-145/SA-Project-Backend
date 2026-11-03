@@ -19,6 +19,7 @@ import { overtimeRecords } from "../features/overtime/overtime.schema";
 import { leaveTypes, leaveQuotas } from "../features/leave/leave.schema";
 import { payrollConfigurations, payrollPeriods } from "../features/payroll/payroll.schema";
 import { presentationBranches, presentationEmployees } from "./presentation-data";
+import { sameLeavePolicy } from "./leave-consolidation";
 
 const SHOP_CODE = "HARIS-PRESENTATION";
 const PASSWORD = "HarisDemo2026!";
@@ -62,7 +63,9 @@ async function seed() {
       { code: "HARIS-PERSONAL", nameTh: "ลากิจ", quotaDays: "3" },
       { code: "HARIS-ANNUAL", nameTh: "ลาพักร้อน", quotaDays: "6" },
     ]) {
-      const [type] = await tx.insert(leaveTypes).values({ ...entry, quotaType: "fixed", isDeductible: false, requiresDocument: false }).returning();
+      const policy = { ...entry, quotaType: "fixed" as const, isDeductible: false, requiresDocument: false, allowExceed: false };
+      const existingTypes = await tx.select().from(leaveTypes).where(and(eq(leaveTypes.nameTh, entry.nameTh), eq(leaveTypes.isActive, true)));
+      const type = existingTypes.find((row) => sameLeavePolicy(row, policy)) ?? (await tx.insert(leaveTypes).values(policy).returning())[0];
       if (!type) throw new Error("Cannot create leave type");
       leaveRows.push(type);
     }
