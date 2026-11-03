@@ -2,10 +2,13 @@ import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
 import { employees } from "../employee/employee.schema";
+import { branches } from "../branch/branch.schema";
+import { departments } from "../department/department.schema";
+import { positions } from "../position/position.schema";
 import type { AssignmentCommand, EmploymentType } from "./employment-assignment.dto";
 import { employmentAssignments } from "./employment-assignment.schema";
 
-export interface AssignmentRecord { isSocialSecurityMember?: boolean; id: string; employeeId: string; branchId: string; departmentId: string; positionId: string; employmentType: EmploymentType; baseSalary: string; welfareAmount: string; effectiveFrom: string; effectiveTo: string | null; isPrimary: boolean; createdByUserAccountId: string | null }
+export interface AssignmentRecord { branchName?: string | null; departmentName?: string | null; positionName?: string | null; isSocialSecurityMember?: boolean; id: string; employeeId: string; branchId: string; departmentId: string; positionId: string; employmentType: EmploymentType; baseSalary: string; welfareAmount: string; effectiveFrom: string; effectiveTo: string | null; isPrimary: boolean; createdByUserAccountId: string | null }
 export interface AssignmentRepositoryPort {
   findForTermination(executor:DatabaseExecutor,employeeId:string):Promise<AssignmentRecord[]>;
   truncateForTermination(executor:DatabaseExecutor,assignmentId:string,date:string):Promise<AssignmentRecord|null>;
@@ -28,7 +31,16 @@ export const employmentAssignmentRepository: AssignmentRepositoryPort = {
     return row ? project(row) : null;
   },
   async employeeIsActive(executor, employeeId) { const [row]=await executor.select({id:employees.id}).from(employees).where(and(eq(employees.id,id(employeeId)),eq(employees.status,"active"))).limit(1); return row!==undefined; },
-  async list(executor, employeeId) { const rows=await executor.select().from(employmentAssignments).where(eq(employmentAssignments.employeeId,id(employeeId))).orderBy(asc(employmentAssignments.effectiveFrom),asc(employmentAssignments.id)); return rows.map(project); },
+  async list(executor, employeeId) {
+    const rows = await executor.select({ assignment: employmentAssignments, branchName: branches.name, departmentName: departments.name, positionName: positions.name })
+      .from(employmentAssignments)
+      .leftJoin(branches, eq(branches.id, employmentAssignments.branchId))
+      .leftJoin(departments, eq(departments.id, employmentAssignments.departmentId))
+      .leftJoin(positions, eq(positions.id, employmentAssignments.positionId))
+      .where(eq(employmentAssignments.employeeId, id(employeeId)))
+      .orderBy(asc(employmentAssignments.effectiveFrom), asc(employmentAssignments.id));
+    return rows.map(({ assignment, ...names }) => ({ ...project(assignment), ...names }));
+  },
   async findLatest(executor, employeeId) { const [row]=await executor.select().from(employmentAssignments).where(eq(employmentAssignments.employeeId,id(employeeId))).orderBy(desc(employmentAssignments.effectiveFrom),desc(employmentAssignments.id)).limit(1).for("update"); return row?project(row):null; },
   async findAtDate(executor, employeeId, date) { const [row]=await executor.select().from(employmentAssignments).where(and(eq(employmentAssignments.employeeId,id(employeeId)),lte(employmentAssignments.effectiveFrom,date),or(isNull(employmentAssignments.effectiveTo),gte(employmentAssignments.effectiveTo,date)))).orderBy(desc(employmentAssignments.effectiveFrom)).limit(1); return row?project(row):null; },
   async close(executor, assignmentId, effectiveTo) { const [row]=await executor.update(employmentAssignments).set({effectiveTo,updatedAt:new Date()}).where(and(eq(employmentAssignments.id,id(assignmentId)),isNull(employmentAssignments.effectiveTo))).returning(); return row?project(row):null; },

@@ -12,6 +12,9 @@ export const toEmployeeTeamDto = (record: EmployeeReadRecord): EmployeeTeamDto =
   branch_id: record.currentAssignment?.branchId ?? null,
   department_id: record.currentAssignment?.departmentId ?? null,
   position_id: record.currentAssignment?.positionId ?? null,
+  branch_name: record.currentAssignment?.branchName ?? null,
+  department_name: record.currentAssignment?.departmentName ?? null,
+  position_name: record.currentAssignment?.positionName ?? null,
   status: record.status,
 });
 export const toEmployeeOwnDto = (record: EmployeeReadRecord): EmployeeOwnDto => ({

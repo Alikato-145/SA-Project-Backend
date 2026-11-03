@@ -15,7 +15,7 @@ const actor = (roleCode: "OWNER" | "HR" | "SUPERVISOR"): AuthenticatedActor => (
 
 type Row = EmployeeWriteInput & { employeeCode: string; id: string; status: "active" | "inactive" | "suspended" | "terminated"; terminatedAt: string | null };
 type MemoryExecutor = { rows: Row[] };
-const record = (row: Row) => ({ ...row, currentAssignment: { branchId: "10", departmentId: "100", positionId: "1" } });
+const record = (row: Row) => ({ ...row, currentAssignment: { branchId: "10", departmentId: "100", positionId: "1", branchName: "Branch 10", departmentName: "Department 100", positionName: "Cook" } });
 
 const setup = (options: { failSuccessAudit?: boolean; beforeScope?: () => void } = {}) => {
   const root: MemoryExecutor = { rows: [] };
@@ -23,7 +23,7 @@ const setup = (options: { failSuccessAudit?: boolean; beforeScope?: () => void }
   let currentBranch = "10";
   const repository: EmployeeWriteRepositoryPort = {
     async list() { return { items: [], page: 1, pageSize: 20, total: 0 }; },
-    async findById(executor, id) { const row = (executor as unknown as MemoryExecutor).rows.find((item) => item.id === id); return row ? { ...record(row), currentAssignment: { branchId: currentBranch, departmentId: "100", positionId: "1" } } : null; },
+    async findById(executor, id) { const row = (executor as unknown as MemoryExecutor).rows.find((item) => item.id === id); return row ? { ...record(row), currentAssignment: { ...record(row).currentAssignment, branchId: currentBranch } } : null; },
     async findIdentityConflict(executor, input, excludeId) {
       const row = (executor as unknown as MemoryExecutor).rows.find((item) => item.id !== excludeId && (item.employeeCode === input.employeeCode || (!!input.nationalId && item.nationalId === input.nationalId) || (!!input.passportId && item.passportId === input.passportId)));
       return row ? { id: row.id } : null;

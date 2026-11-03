@@ -5,6 +5,9 @@ import type { SQL } from "drizzle-orm";
 import type { DatabaseExecutor } from "../../core/db/transaction";
 import { ApplicationError } from "../../core/errors/application.error";
 import { employmentAssignments } from "../employment-assignment/employment-assignment.schema";
+import { branches } from "../branch/branch.schema";
+import { departments } from "../department/department.schema";
+import { positions } from "../position/position.schema";
 import type { EmployeeCreateCommand, EmployeeListFilters, EmployeeStatus, EmployeeUpdateCommand } from "./employee.dto";
 import { employees } from "./employee.schema";
 import type { EmployeeVisibility } from "./employee.scope";
@@ -23,7 +26,7 @@ export interface EmployeeReadRecord {
   hireDate: string;
   status: EmployeeStatus;
   terminatedAt: string | null;
-  currentAssignment: { branchId: string; departmentId: string; positionId: string } | null;
+  currentAssignment: { branchId: string; departmentId: string; positionId: string; branchName: string | null; departmentName: string | null; positionName: string | null } | null;
 }
 
 export interface EmployeeReadPage {
@@ -79,6 +82,9 @@ const selection = {
   branchId: employmentAssignments.branchId,
   departmentId: employmentAssignments.departmentId,
   positionId: employmentAssignments.positionId,
+  branchName: branches.name,
+  departmentName: departments.name,
+  positionName: positions.name,
 };
 const project = (row: {
   id: number; employeeCode: string; firstName: string; lastName: string;
@@ -86,13 +92,14 @@ const project = (row: {
   personalEmail: string | null; address: string | null; hireDate: string;
   status: EmployeeStatus; terminatedAt: string | null;
   branchId: number | null; departmentId: number | null; positionId: number | null;
+  branchName: string | null; departmentName: string | null; positionName: string | null;
 }): EmployeeReadRecord => ({
   id: String(row.id), employeeCode: row.employeeCode, firstName: row.firstName, lastName: row.lastName,
   nationalId: row.nationalId, passportId: row.passportId, phone: row.phone,
   personalEmail: row.personalEmail, address: row.address, hireDate: row.hireDate,
   status: row.status, terminatedAt: row.terminatedAt,
   currentAssignment: row.branchId === null || row.departmentId === null || row.positionId === null
-    ? null : { branchId: String(row.branchId), departmentId: String(row.departmentId), positionId: String(row.positionId) },
+    ? null : { branchId: String(row.branchId), departmentId: String(row.departmentId), positionId: String(row.positionId), branchName: row.branchName, departmentName: row.departmentName, positionName: row.positionName },
 });
 
 const projectEmployee = (row: typeof employees.$inferSelect): EmployeeReadRecord => ({
@@ -125,7 +132,10 @@ export const employeeRepository: EmployeeWriteRepositoryPort = {
     const where = conditions.length ? and(...conditions) : undefined;
     const offset = (query.page - 1) * query.pageSize;
     const rows = await executor.select(selection).from(employees)
-      .leftJoin(employmentAssignments, currentAssignmentJoin(today)).where(where)
+      .leftJoin(employmentAssignments, currentAssignmentJoin(today))
+      .leftJoin(branches, eq(branches.id, employmentAssignments.branchId))
+      .leftJoin(departments, eq(departments.id, employmentAssignments.departmentId))
+      .leftJoin(positions, eq(positions.id, employmentAssignments.positionId)).where(where)
       .orderBy(asc(employees.employeeCode), asc(employees.id)).limit(query.pageSize).offset(offset);
     const [totalRow] = await executor.select({ value: count() }).from(employees)
       .leftJoin(employmentAssignments, currentAssignmentJoin(today)).where(where);
@@ -135,7 +145,10 @@ export const employeeRepository: EmployeeWriteRepositoryPort = {
     const scoped = visibilityWhere(visibility);
     const where = and(eq(employees.id, numberId(employeeId)), scoped);
     const [row] = await executor.select(selection).from(employees)
-      .leftJoin(employmentAssignments, currentAssignmentJoin(today)).where(where).limit(1);
+      .leftJoin(employmentAssignments, currentAssignmentJoin(today))
+      .leftJoin(branches, eq(branches.id, employmentAssignments.branchId))
+      .leftJoin(departments, eq(departments.id, employmentAssignments.departmentId))
+      .leftJoin(positions, eq(positions.id, employmentAssignments.positionId)).where(where).limit(1);
     return row ? project(row) : null;
   },
   async findIdentityConflict(executor, input, excludeId) {

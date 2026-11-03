@@ -22,7 +22,7 @@ const makeRecord = (id: number, branchId: number, departmentId: number): Employe
   firstName: "Given", lastName: `Person${id}`, nationalId: "1234567890123", passportId: null,
   phone: "0812345678", personalEmail: "private@example.test", address: "Private address",
   hireDate: "2026-01-01", status: "active", terminatedAt: null,
-  currentAssignment: { branchId: String(branchId), departmentId: String(departmentId), positionId: "1000" },
+  currentAssignment: { branchId: String(branchId), departmentId: String(departmentId), positionId: "1000", branchName: `Branch ${branchId}`, departmentName: `Department ${departmentId}`, positionName: "Cook" },
 });
 const records = [makeRecord(1, 10, 100), makeRecord(2, 10, 200), makeRecord(3, 20, 300)];
 
@@ -67,6 +67,7 @@ describe("A3 scoped employee reads", () => {
       const { controller, events } = setup();
       const result = await controller.list({ actor: subject, requestId: "req-1", query: {} });
       expect(result.data.map((item) => item.id)).toEqual([...ids]);
+      expect(result.data[0]).toMatchObject({ branch_name: "Branch 10", department_name: "Department 100", position_name: "Cook" });
       expect(events).toHaveLength(1);
       expect(JSON.stringify(result)).not.toContain("1234567890123");
       if (subject.grants[0]!.scope === "department") {

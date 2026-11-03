@@ -3,7 +3,7 @@ import { parseBusinessDate, parseEmployeeId, parseMoney } from "../employee/empl
 export type EmploymentType = "full_time" | "part_time" | "temporary";
 export interface AssignmentBodyDto { branch_id: unknown; department_id: unknown; position_id: unknown; employment_type: unknown; base_salary: unknown; welfare_amount: unknown; effective_from: unknown; effective_to?: unknown; is_social_security_member?: unknown }
 export interface AssignmentCommand { isSocialSecurityMember?: boolean; branchId: string; departmentId: string; positionId: string; employmentType: EmploymentType; baseSalary: string; welfareAmount: string; effectiveFrom: string; effectiveTo: string | null }
-export interface AssignmentDto { is_social_security_member: boolean; id: string; employee_id: string; branch_id: string; department_id: string; position_id: string; employment_type: EmploymentType; base_salary: string; welfare_amount: string; effective_from: string; effective_to: string | null; is_primary: boolean }
+export interface AssignmentDto { branch_name: string | null; department_name: string | null; position_name: string | null; is_social_security_member: boolean; id: string; employee_id: string; branch_id: string; department_id: string; position_id: string; employment_type: EmploymentType; base_salary: string; welfare_amount: string; effective_from: string; effective_to: string | null; is_primary: boolean }
 const invalid = (field: string): never => { throw new ApplicationError("VALIDATION_ERROR", { fieldErrors: { [field]: ["Invalid value."] } }); };
 export const parseAssignmentBody = (body: AssignmentBodyDto): AssignmentCommand => {
   if (body.is_social_security_member !== undefined && typeof body.is_social_security_member !== "boolean") invalid("is_social_security_member");
