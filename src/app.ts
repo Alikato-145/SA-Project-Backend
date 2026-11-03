@@ -1,9 +1,6 @@
 import { createPayrollPaymentRoutes } from "./features/payroll/payroll-payment.routes";
 import { createPayrollPaymentService } from "./features/payroll/payroll-payment.service";
 import { payrollPaymentRepository } from "./features/payroll/payroll-payment.repository";
-import { createLoanRequestRuntimeService } from "./features/loan/loan-request.runtime.service";
-import { LoanRequestController } from "./features/loan/loan-request.controller";
-import { createLoanRequestRoutes } from "./features/loan/loan-request.routes";
 import { accessLog } from "./core/middleware/access-log";
 import { createHealthRoutes } from "./core/health/health.routes";
 import { createAttachmentRoutes } from "./features/attachment/attachment.routes";
@@ -31,12 +28,6 @@ import { createOvertimeRoutes } from "./features/overtime/overtime.routes";
 import { createAdvanceRuntimeService } from "./features/advance/advance.runtime.service";
 import { AdvanceController } from "./features/advance/advance.controller";
 import { createAdvanceRoutes } from "./features/advance/advance.routes";
-import { createLoanRuntimeService } from "./features/loan/loan.runtime.service";
-import { LoanController } from "./features/loan/loan.controller";
-import { createLoanRoutes } from "./features/loan/loan.routes";
-import { createDebtRuntimeService } from "./features/debt/debt.runtime.service";
-import { DebtController } from "./features/debt/debt.controller";
-import { createDebtRoutes } from "./features/debt/debt.routes";
 import Elysia from "elysia";
 import { authConfig } from "./core/config/auth.config";
 import { createRequestAuthenticator } from "./core/auth/request-authenticator";
@@ -283,12 +274,11 @@ export const concreteOperationsOptions = () => {
  const schedule=createBranchScheduleRuntimeService(runtime);
  const holiday=createHolidayCalendarRuntimeService(runtime);
  const attendance=createAttendanceRuntimeService(runtime,schedule,holiday);
- const loan=createLoanRuntimeService(runtime);
  const leaveEffect=new AttendanceLeaveEffect(new DrizzleAttendanceLeaveEffectRepository(),{branchAtDate:async(id,date)=>(await context.context(id,date)).branchId});
  return {
   authenticate:createAuthenticator(),allowedOrigins:authConfig.allowedOrigins,
   attendance,schedule,holiday,leave:createLeaveRuntimeService(runtime,leaveEffect),
-  overtime:createOvertimeRuntimeService(runtime,schedule,holiday,attendance),advance:createAdvanceRuntimeService(runtime,attendance),loan,loanRequest:createLoanRequestRuntimeService(runtime,loan),debt:createDebtRuntimeService(runtime),
+  overtime:createOvertimeRuntimeService(runtime,schedule,holiday,attendance),advance:createAdvanceRuntimeService(runtime,attendance),
  };
 };
 
@@ -323,10 +313,7 @@ export const createApp = (
     .use(createHolidayCalendarRoutes({...operationsOptions,controller:new HolidayCalendarController(operationsOptions.holiday)}))
     .use(createLeaveRoutes({...operationsOptions,controller:new LeaveController(operationsOptions.leave)}))
     .use(createOvertimeRoutes({...operationsOptions,controller:new OvertimeController(operationsOptions.overtime)}))
-    .use(createAdvanceRoutes({...operationsOptions,controller:new AdvanceController(operationsOptions.advance)}))
-    .use(createLoanRoutes({...operationsOptions,controller:new LoanController(operationsOptions.loan)}))
-    .use(createLoanRequestRoutes({...operationsOptions,controller:new LoanRequestController(operationsOptions.loanRequest)}))
-    .use(createDebtRoutes({...operationsOptions,controller:new DebtController(operationsOptions.debt)}));
+    .use(createAdvanceRoutes({...operationsOptions,controller:new AdvanceController(operationsOptions.advance)}));
 
 // Person C owns this composition root. Feature owners export route plugins;
 // registrations are added here without moving feature logic into app.ts.

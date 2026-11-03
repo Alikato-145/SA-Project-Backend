@@ -8,7 +8,6 @@ import { branches } from "../features/branch/branch.schema";
 import { branchSchedules } from "../features/branch-schedule/branch-schedule.schema";
 import { workDayRecords } from "../features/attendance/attendance.schema";
 import { departments } from "../features/department/department.schema";
-import { debtTypes } from "../features/debt/debt.schema";
 import { employees } from "../features/employee/employee.schema";
 import { employmentAssignments } from "../features/employment-assignment/employment-assignment.schema";
 import { employeeWeeklyHolidays } from "../features/employee-weekly-holiday/employee-weekly-holiday.schema";
@@ -373,9 +372,6 @@ const seed = async () => {
         await transaction.insert(leaveQuotas).values({ employeeId: demoEmployeeId, leaveTypeId: type.id, quotaYear: year, entitledDays: leaveType.quotaDays, usedDays: "0" }).onConflictDoNothing();
       }
     }
-    await transaction.insert(debtTypes).values({
-      code: "DEMO_FOOD", nameTh: "ค่าอาหารตัวอย่าง", description: "ข้อมูลสำหรับทดสอบ C4",
-    }).onConflictDoNothing();
     await transaction.insert(payrollPeriods).values({
       shopId: demoShopId, periodYear: year, periodMonth: month, startDate: monthStart,
       endDate: monthEnd, createdByUserAccountId: accountId,

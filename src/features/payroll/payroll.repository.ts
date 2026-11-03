@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { countMonthlyWorkDays } from "./calculation/monthly-workdays";
 import { branches } from "../branch/branch.schema";
 import { db } from "../../core/db/client";
@@ -6,7 +6,6 @@ import type { DatabaseExecutor } from "../../core/db/transaction";
 import { advanceRequests } from "../advance/advance.schema";
 import { workDayRecords } from "../attendance/attendance.schema";
 import { branchScheduleOverrides, branchSchedules } from "../branch-schedule/branch-schedule.schema";
-import { debtTransactions } from "../debt/debt.schema";
 import { employeeWeeklyHolidays } from "../employee-weekly-holiday/employee-weekly-holiday.schema";
 import { employees } from "../employee/employee.schema";
 import { departments } from "../department/department.schema";
@@ -16,7 +15,6 @@ import type { PayrollReadinessFacts } from "./payroll.readiness.types";
 import { employmentAssignments } from "../employment-assignment/employment-assignment.schema";
 import { leaveRequestDays, leaveRequests } from "../leave/leave.schema";
 import { holidayCalendars } from "../holiday-calendar/holiday-calendar.schema";
-import { loanInstallments, loans } from "../loan/loan.schema";
 import { overtimeRecords } from "../overtime/overtime.schema";
 import { shops } from "../shop/shop.schema";
 import {
@@ -224,11 +222,8 @@ export const createPayrollRepositorySession = (executor: Executor): PayrollRepos
     for (const record of records) {
       const sources = await executor.select({ table: payrollItems.sourceTable, id: payrollItems.sourceId })
         .from(payrollItems).where(eq(payrollItems.payrollRecordId, record.id));
-      const loanIds = sources.filter((row) => row.table === "loan_installments" && row.id !== null).map((row) => row.id!);
       const advanceIds = sources.filter((row) => row.table === "advance_requests" && row.id !== null).map((row) => row.id!);
       if (advanceIds.length) await executor.update(advanceRequests).set({ status: "deducted", updatedAt: new Date() }).where(and(inArray(advanceRequests.id, advanceIds), eq(advanceRequests.status, "approved")));
-      if (loanIds.length) await executor.update(loanInstallments).set({ status: "deducted", deductedAt: new Date(), payrollRecordId: record.id, updatedAt: new Date() }).where(inArray(loanInstallments.id, loanIds));
-      // Frozen debt rows are append-only. Their locked source item is the settlement evidence.
     }
   },
   async insertAdjustment(command) {
@@ -380,7 +375,7 @@ export class DrizzlePayrollRepository implements PayrollRepository {
 // payroll read projection without importing any other feature repository.
 export const payrollSourceTables = {
   employees, employmentAssignments, workDayRecords, leaveRequests, leaveRequestDays,
-  overtimeRecords, advanceRequests, loans, loanInstallments, debtTransactions,
+  overtimeRecords, advanceRequests,
 } as const;
 
 export interface PayrollInputLoadResult {
@@ -627,20 +622,6 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         eq(advanceRequests.requestMonth, `${period.startDate.slice(0, 7)}-01`),
       ));
       const advances = options.lockSources ? await advancesQuery.for("update") : await advancesQuery;
-      const installmentsQuery = executor.select({ installment: loanInstallments }).from(loanInstallments)
-        .innerJoin(loans, eq(loanInstallments.loanId, loans.id)).where(and(
-          eq(loans.employeeId, assignment.employeeId), eq(loanInstallments.status, "scheduled"),
-          lte(loanInstallments.duePeriodStart, period.startDate),
-        ));
-      const installments = options.lockSources ? await installmentsQuery.for("update", { of: loanInstallments }) : await installmentsQuery;
-      const debtsQuery = executor.select().from(debtTransactions).where(and(
-        eq(debtTransactions.employeeId, assignment.employeeId), ne(debtTransactions.transactionKind, "reversal"),
-        sql`not exists (select 1 from debt_transactions reversal where reversal.original_transaction_id = ${debtTransactions.id} and reversal.transaction_kind = 'reversal')`,
-        sql`not exists (select 1 from payroll_items pi inner join payroll_records pr on pr.id = pi.payroll_record_id
-          where pi.source_table = 'debt_transactions' and pi.source_id = ${debtTransactions.id} and pr.status = 'locked')`,
-        lte(debtTransactions.transactionDate, period.endDate), isNull(debtTransactions.settledAt), isNull(debtTransactions.settledInPayrollRecordId),
-      ));
-      const debts = options.lockSources ? await debtsQuery.for("update") : await debtsQuery;
       const adjustmentsQuery = executor.select({ adjustment: payrollAdjustments }).from(payrollAdjustments)
         .where(and(
           eq(payrollAdjustments.appliedPayrollPeriodId, numericId(period.id)), eq(payrollAdjustments.status, "approved"),
@@ -665,8 +646,6 @@ export class DrizzlePayrollInputProvider implements PayrollInputProvider {
         overtime,
         deductions: [
           ...advances.map((row) => ({ id: id(row.id), type: "advance" as const, amount: row.amount, description: "Approved advance", date: row.requestMonth })),
-          ...installments.map(({ installment }) => ({ id: id(installment.id), type: "loan_installment" as const, amount: installment.amount, description: "Loan installment", date: installment.duePeriodStart })),
-          ...debts.map((row) => ({ id: id(row.id), type: "debt" as const, amount: row.amount, description: row.description, date: row.transactionDate })),
         ],
         adjustments: adjustments.map(({ adjustment }) => ({ id: id(adjustment.id), direction: adjustment.direction, amount: adjustment.amount, reason: adjustment.reason })),
       });

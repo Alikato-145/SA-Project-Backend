@@ -47,7 +47,7 @@ export const createReportService = (dependencies: { rootExecutor: DatabaseExecut
   async details(actor:AuthenticatedActor,periodId:string,kind:ReportKind,requestId:string,filters:ReportFilters={},page=1,pageSize=20) {
     const context=createActionContext({actor,requestId,actionBase:"report.details.read",target:{tableName:"payroll_periods",recordId:periodId}});
     return dependencies.actions.observeRead(context,async()=>{
-      if(!["attendance","leave","overtime","debt","payroll"].includes(kind)||!Number.isInteger(page)||page<1||!Number.isInteger(pageSize)||pageSize<1||pageSize>100)throw new ApplicationError("VALIDATION_ERROR");
+      if(!["attendance","leave","overtime","payroll"].includes(kind)||!Number.isInteger(page)||page<1||!Number.isInteger(pageSize)||pageSize<1||pageSize>100)throw new ApplicationError("VALIDATION_ERROR");
       const loaded=await readPeriod(actor,periodId,filters);
       // ponytail: page a restaurant-sized read projection; push slicing to SQL if datasets grow large.
       const rows=await reportRepository.details(dependencies.rootExecutor,loaded.period,kind,loaded.filters);

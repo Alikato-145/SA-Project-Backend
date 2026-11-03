@@ -56,6 +56,7 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     const leaveType = await one("insert into leave_types(code,name_th,quota_type,quota_days,is_deductible) values($1,'B5 Leave','fixed','10',true) returning id", [`B5L-${key}`]);
     await client.query("insert into leave_quotas(employee_id,leave_type_id,quota_year,entitled_days) values($1,$2,$3,'10')", [employee, leaveType, year]);
     const debtType = await one("insert into debt_types(code,name_th) values($1,'B5 Food') returning id", [`B5D-${key}`]);
+    const debt = await one("insert into debt_transactions(employee_id,debt_type_id,transaction_date,description,amount,recorded_by_user_account_id) values($1,$2,$3,'Legacy meal','25.00',$4) returning id", [employee, debtType, day(1), owner]);
     // Pending approvals and missing attendance in another shop must not block ours.
     await client.query("insert into leave_requests(employee_id,original_leave_type_id,start_date,end_date,requested_days,submitted_by_user_account_id) values($1,$2,$3,$3,'1',$4)", [otherEmployee, leaveType, day(1), owner]);
     await client.query("insert into overtime_records(employee_id,overtime_date,overtime_type,hours,requested_by_user_account_id) values($1,$2,'hourly','1',$3)", [otherEmployee, day(1), owner]);
@@ -119,10 +120,6 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
       const ot = await success("/overtime-records", { employee_id: employee, overtime_date: date, overtime_type: type, ...quantity }, self);
       await success(`/overtime-records/${ot.id}/approve`, {}, owner);
     }
-    await success("/loans", { employee_id: employee, principal_amount: "200.00", installment_count: 2, first_due_month: day(1), reason: "B5 loan" });
-    const debt = await success("/debt-transactions", { employee_id: employee, debt_type_id: debtType, transaction_kind: "charge", amount: "25.00", description: "B5 meal" });
-    const reversed = await success("/debt-transactions", { employee_id: employee, debt_type_id: debtType, transaction_kind: "charge", amount: "99.00", description: "Mistaken meal" });
-    await success(`/debt-transactions/${reversed.id}/reverse`, { description: "Correction" });
     for (const [config_key, numeric_value, unit] of [["STANDARD_WORK_DAYS", String(lastDay), "days"], ["ABSENCE_RATE", "1.0000", "multiplier"], ["LATE_RATE", "2.0000", "currency_per_minute"], ["SOCIAL_SECURITY_RATE", "0.0500", "ratio"], ["SOCIAL_SECURITY_CAP", "750.0000", "currency"], ["OT_HOURLY_RATE", "1.5000", "multiplier"], ["OT_REST_DAY_RATE", "1.0000", "multiplier"], ["OT_PUBLIC_HOLIDAY_RATE", "2.0000", "multiplier"]]) {
       await success("/payroll/configurations", { shop_id: shop, branch_id: null, config_key, numeric_value, unit, effective_from: day(1), effective_to: null });
     }
@@ -142,9 +139,9 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     expect(records).toHaveLength(1);
     const record = records[0]!;
     expect(record.employee_id).toBe(employee);
-    expect(record.total_deductions).toBe((750 + advanceAmount + 100 + 25).toFixed(2));
+    expect(record.total_deductions).toBe((750 + advanceAmount).toFixed(2));
     expect((record.items as Row[]).filter(row => row.item_type === "absence" || row.item_type === "sick_unpaid" || row.item_type === "lateness")).toHaveLength(0);
-    expect((record.items as Row[]).filter(row => row.item_type === "debt").map(row => row.source_id)).toEqual([debt.id]);
+    expect((record.items as Row[]).filter(row => row.item_type === "debt" || row.item_type === "loan")).toHaveLength(0);
     expect((record.items as Row[]).filter(row => String(row.item_type).startsWith("overtime_"))).toHaveLength(3);
     const locked = await success(`/payroll/periods/${period.id}/lock`, {});
     expect((locked.period as Row).status).toBe("locked");
@@ -154,14 +151,11 @@ databaseTest("B5: authenticated two-branch operations reconcile through payroll 
     expect(attendance.find(row => row.work_date === day(16))!.branch_id).toBe(branchB);
     const correction = await request(`/work-day-records/${attendance.find(row => row.work_date === day(1))!.id}`, { status: "absent", late_minutes: 0, is_deductible: true }, owner, "PATCH");
     expect(correction.status).toBe(409);
-    expect((await request(`/debt-transactions/${debt.id}/reverse`, { description: "Too late" })).status).toBe(409);
     expect((await request(`/payroll/periods/${period.id}/lock`, {})).status).toBe(409);
-    const ledger = await success(`/debt-transactions?employee_id=${employee}`);
-    expect(ledger.outstanding_balance).toBe("0.00");
-    expect((ledger.entries as Row[]).find(row => row.id === debt.id)!.settled_in_payroll_record_id).toBeString();
     const persistedRecord = await client.query("select id from payroll_records where payroll_period_id=$1 and employee_id=$2", [period.id, employee]);
     const settlement = await client.query("select count(*)::int as count from payroll_items where payroll_record_id=$1 and source_table='debt_transactions' and item_type='debt'", [persistedRecord.rows[0].id]);
-    expect(settlement.rows[0].count).toBe(1);
+    expect(settlement.rows[0].count).toBe(0);
+    expect((await client.query("select settled_at, settled_in_payroll_record_id from debt_transactions where id=$1", [debt])).rows[0]).toEqual({ settled_at: null, settled_in_payroll_record_id: null });
     const used = await client.query("select used_days from leave_quotas where employee_id=$1 and leave_type_id=$2", [employee, leaveType]);
     expect(used.rows[0].used_days).toBe("3.00");
     const audit = await client.query("select count(*)::int as count from audit_logs where actor_user_account_id=any($1::bigint[]) and new_data is not null", [[owner, manager, supervisor, self]]);

@@ -217,7 +217,7 @@ export const createPayrollService = (dependencies: PayrollServiceDependencies) =
           code: "PAYROLL_TOTAL_MISMATCH", employeeId: null, detail: "ยอดรวมรายการไม่ตรงกับผลคำนวณ ให้ตรวจหลักฐานก่อนล็อกรอบ",
         });
         for (const record of records) if (money(record.netPay) < 0n) blockers.push({
-          code: "PAYROLL_NEGATIVE_NET_PAY", employeeId: record.employeeId, detail: "รายการหักมากกว่ารายได้ ให้ตรวจเงินทดรอง ค่างวด หนี้ และรายการปรับปรุง",
+          code: "PAYROLL_NEGATIVE_NET_PAY", employeeId: record.employeeId, detail: "รายการหักมากกว่ารายได้ ให้ตรวจเงินทดรองและรายการปรับปรุง",
         });
         if (blockers.length === 0) {
           await session.replaceCalculatedRecords(period.id, records, actor.accountId, false);

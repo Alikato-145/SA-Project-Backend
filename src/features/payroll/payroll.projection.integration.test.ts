@@ -4,7 +4,7 @@ import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 
 const databaseTest = process.env.TEST_DATABASE_URL ? test : test.skip;
-databaseTest("date-20 projection is conservative and failed final lock rolls back finance settlement", async () => {
+databaseTest("legacy debts and loans do not affect new payroll or advance while approved advance remains deductible", async () => {
   const client = new Client({ connectionString: process.env.TEST_DATABASE_URL });
   await client.connect();
   const key = randomUUID().slice(0, 8);
@@ -37,8 +37,8 @@ databaseTest("date-20 projection is conservative and failed final lock rolls bac
     const inputs = new DrizzlePayrollInputProvider();
     const inputService = createPayrollInputService(new DrizzlePayrollInputRepository(), inputs);
     const command = { employeeId: employee, date: "2098-09-20", amount: "5000.00" };
-    // Only 20 earned days; all known monthly deductions, including the date-25 debt.
-    expect(await inputService.projectAdvance(executor, command)).toBe("14725.00");
+    // Twenty earned days, approved advance and candidate advance; legacy debt/loan do not affect new calculations.
+    expect(await inputService.projectAdvance(executor, command)).toBe("14875.00");
     const session = createPayrollRepositorySession(executor);
     const period = (await session.findPeriod(String(periodId)))!;
     expect((await inputs.load(session, period)).blockers).toContainEqual(expect.objectContaining({ code: "PAYROLL_ATTENDANCE_INCOMPLETE" }));
@@ -64,16 +64,16 @@ databaseTest("date-20 projection is conservative and failed final lock rolls bac
     const successfulService = createPayrollService({ repository, inputs, audit: { async record() {} } });
     const locked = await successfulService.lockPayrollPeriod(payrollActor, String(periodId), "successful-lock");
     expect(locked.period.status).toBe("locked");
-    expect(locked.records[0]!.netPay).toBe("29725.00");
+    expect(locked.records[0]!.netPay).toBe("29875.00");
     const stored = (await client.query("select id,status,locked_at from payroll_records where payroll_period_id=$1", [periodId])).rows[0];
     expect(stored.status).toBe("locked");
     expect(stored.locked_at).not.toBeNull();
     expect((await client.query("select count(*)::int as n from payroll_items where payroll_record_id=$1", [stored.id])).rows[0].n).toBeGreaterThan(30);
     expect((await client.query("select status from advance_requests where id=$1", [advance])).rows[0].status).toBe("deducted");
-    expect((await client.query("select status from loan_installments where id=$1", [installment])).rows[0].status).toBe("deducted");
-    expect((await client.query("select pi.payroll_record_id from payroll_items pi join payroll_records pr on pr.id=pi.payroll_record_id where pi.source_table='debt_transactions' and pi.source_id=$1 and pr.status='locked'", [debtId])).rows[0].payroll_record_id).toBe(String(stored.id));
+    expect((await client.query("select status from loan_installments where id=$1", [installment])).rows[0].status).toBe("scheduled");
+    expect((await client.query("select pi.payroll_record_id from payroll_items pi join payroll_records pr on pr.id=pi.payroll_record_id where pi.source_table='debt_transactions' and pi.source_id=$1 and pr.status='locked'", [debtId])).rows).toHaveLength(0);
     expect((await client.query("select settled_at,settled_in_payroll_record_id from debt_transactions where id=$1", [debtId])).rows[0]).toEqual({ settled_at: null, settled_in_payroll_record_id: null });
-    expect(await inputService.getDebtSettlement(executor, debtId)).toMatchObject({ payrollRecordId: Number(stored.id) });
+    expect(await inputService.getDebtSettlement(executor, debtId)).toBeUndefined();
     const nextPeriodId = await one("insert into payroll_periods(shop_id,period_year,period_month,start_date,end_date,created_by_user_account_id) values($1,2098,10,'2098-10-01','2098-10-01',$2) returning id", [shop, actor]);
     await client.query("insert into work_day_records(employee_id,branch_id,work_date,status,is_deductible,entry_source) values($1,$2,'2098-10-01','present',false,'manual')", [employee, branch]);
     const nextInputs = await inputs.load(session, (await session.findPeriod(String(nextPeriodId)))!);
