@@ -23,6 +23,12 @@ import { sameLeavePolicy } from "./leave-consolidation";
 
 const SHOP_CODE = "HARIS-PRESENTATION";
 const PASSWORD = "HarisDemo2026!";
+const PRESENTATION_BANKS = [
+  { bankCode: "002", bankName: "ธนาคารกรุงเทพ" },
+  { bankCode: "004", bankName: "ธนาคารกสิกรไทย" },
+  { bankCode: "006", bankName: "ธนาคารกรุงไทย" },
+  { bankCode: "014", bankName: "ธนาคารไทยพาณิชย์" },
+] as const;
 
 async function seed() {
   if (process.env.NODE_ENV === "production") throw new Error("Presentation seed is development only");
@@ -88,12 +94,14 @@ async function seed() {
         if (!employee) throw new Error("Cannot create employee");
         await tx.insert(employmentAssignments).values({ employeeId: employee.id, branchId: branch.id, departmentId: department.id, positionId: position.id, baseSalary: String(15000 + (index % 5) * 1500), welfareAmount: "1000", effectiveFrom, createdByUserAccountId: owner.id });
         await tx.insert(employeeWeeklyHolidays).values({ employeeId: employee.id, weekday: 0, effectiveFrom });
-        await tx.insert(employeeBankAccounts).values({ employeeId: employee.id, bankCode: "TEST", bankName: "ธนาคารตัวอย่าง", accountHolderName: `${person.firstName} ${person.lastName}`, accountNumberCiphertext: await cipher.encrypt(`000000${String(branchIndex * 20 + index + 1).padStart(4, "0")}`), accountNumberLast4: String(branchIndex * 20 + index + 1).padStart(4, "0") });
+        const bank = PRESENTATION_BANKS[index % PRESENTATION_BANKS.length]!;
+        const accountNumberLast4 = String(branchIndex * 20 + index + 1).padStart(4, "0");
+        await tx.insert(employeeBankAccounts).values({ employeeId: employee.id, ...bank, accountHolderName: `${person.firstName} ${person.lastName}`, accountNumberCiphertext: await cipher.encrypt(`000000${accountNumberLast4}`), accountNumberLast4 });
         for (const leave of leaveRows) for (const quotaYear of new Set([year, currentYear])) await tx.insert(leaveQuotas).values({ employeeId: employee.id, leaveTypeId: leave.id, quotaYear, entitledDays: leave.quotaDays ?? "0" });
         for (let date = 1; date <= days; date++) {
           const workDate = `${monthStart.slice(0, 7)}-${String(date).padStart(2, "0")}`;
           if (new Date(`${workDate}T12:00:00Z`).getUTCDay() === 0) continue;
-          await tx.insert(workDayRecords).values({ employeeId: employee.id, branchId: branch.id, workDate, status: "present", lateMinutes: 0, isDeductible: false, entrySource: "manual", createdByUserAccountId: owner.id });
+          await tx.insert(workDayRecords).values({ employeeId: employee.id, branchId: branch.id, workDate, clockInAt: new Date(`${workDate}T09:00:00+07:00`), clockOutAt: new Date(`${workDate}T18:00:00+07:00`), status: "present", lateMinutes: 0, isDeductible: false, entrySource: "manual", createdByUserAccountId: owner.id });
         }
         if (branchIndex === 0 && index === 0) {
           await tx.insert(overtimeRecords).values({ employeeId: employee.id, overtimeDate: bangkok, overtimeType: "hourly", hours: "2", reason: "จัดเตรียมร้านหลังปิดบริการ", requestedByUserAccountId: owner.id });

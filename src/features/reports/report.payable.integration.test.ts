@@ -58,8 +58,8 @@ dbTest("period bank CSV uses active primary accounts without preparing or record
   const draft=String((await pool.query("insert into payroll_periods(shop_id,period_year,period_month,start_date,end_date,created_by_user_account_id) values($1,2096,11,'2096-11-01','2096-11-30',$2) returning id",[f.shopId,f.actorId])).rows[0].id);
   await expect(service.periodBankTransfer(actor,draft,f.key)).rejects.toMatchObject({code:"STATE_CONFLICT"});
   let r=await routes.handle(request());expect(r.status).toBe(422);
-  await pool.query("insert into employee_bank_accounts(employee_id,bank_code,bank_name,account_holder_name,account_number_ciphertext,account_number_last4) values($1,'004','Synthetic','Report test',$2,'1234')",[f.employees[2]!.id,await reportTestCipher().encrypt('0000001234')]);
-  r=await routes.handle(request());expect(r.status).toBe(200);const body=await r.text();expect(body).toContain('0000001234');expect(body).toContain('11400.00');expect(body).not.toContain(f.employees[3]!.code);
+  await pool.query("insert into employee_bank_accounts(employee_id,bank_code,bank_name,account_holder_name,account_number_ciphertext,account_number_last4) values($1,'004','ธนาคารกสิกรไทย','Report test',$2,'1234')",[f.employees[2]!.id,await reportTestCipher().encrypt('0000001234')]);
+  r=await routes.handle(request());expect(r.status).toBe(200);const body=await r.text();expect(body).toStartWith('"bank_code","bank_name","account_number","account_holder","net_pay"\r\n');expect(body).toContain('"004","ธนาคารกสิกรไทย","0000001234","Report test"');expect(body).toContain('11400.00');expect(body).not.toContain(f.employees[3]!.code);
   const payments=await pool.query('select count(*)::int n from payroll_payments where payroll_record_id=any($1::bigint[])',[f.employees.map(e=>e.recordId)]);expect(payments.rows[0].n).toBe(0);
  }finally{await pool.end();}
 },30000);

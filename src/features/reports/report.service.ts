@@ -84,8 +84,8 @@ export const createReportService = (dependencies: { rootExecutor: DatabaseExecut
       const accounts=await Promise.all(rows.map(row=>reportRepository.findPrimaryBank(dependencies.rootExecutor,row.employeeId)));
       const missing=rows.filter((_,index)=>!accounts[index]);
       if(missing.length)throw new ApplicationError("VALIDATION_ERROR",{publicMessage:`ยังไม่มีบัญชีธนาคารหลัก: ${missing.map(row=>row.employeeCode).join(", ")}`});
-      const body=await Promise.all(rows.map(async(row,index)=>{const bank=accounts[index]!;return [bank.bankCode,await dependencies.cipher.decrypt(bank.accountCiphertext),bank.accountHolder,row.netPay];}));
-      return csv([["bank_code","account_number","account_holder","net_pay"],...body]);
+      const body=await Promise.all(rows.map(async(row,index)=>{const bank=accounts[index]!;return [bank.bankCode,bank.bankName,await dependencies.cipher.decrypt(bank.accountCiphertext),bank.accountHolder,row.netPay];}));
+      return csv([["bank_code","bank_name","account_number","account_holder","net_pay"],...body]);
     });
   },
   async bankTransfer(actor:AuthenticatedActor,periodId:string,requestId:string,filters:ReportFilters={}) {
